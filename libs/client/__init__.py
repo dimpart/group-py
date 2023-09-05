@@ -37,12 +37,6 @@ from dimples.client import ClientMessagePacker as ClientPacker
 __all__ = [
 
     #
-    #   CPU
-    #
-    'HandshakeCommandProcessor',
-    'LoginCommandProcessor',
-
-    #
     #   Client
     #
     'ClientSession', 'SessionState',
@@ -52,5 +46,4 @@ __all__ = [
 
     'ClientPacker', 'ClientProcessor',
 
-    'GroupManager',
 ]

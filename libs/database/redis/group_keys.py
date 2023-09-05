@@ -2,7 +2,7 @@
 # ==============================================================================
 # MIT License
 #
-# Copyright (c) 2021 Albert Moky
+# Copyright (c) 2023 Albert Moky
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,53 +23,50 @@
 # SOFTWARE.
 # ==============================================================================
 
-from typing import Optional
+from typing import Optional, Dict
 
-from dimples import utf8_encode, utf8_decode, json_encode, json_decode
-from dimples import ID, Document
-from dimples.database.dos.document import parse_document
+from dimples import json_encode, json_decode, utf8_encode, utf8_decode
+from dimples import ID
 
 from .base import Cache
 
 
-class DocumentCache(Cache):
+class GroupKeysCache(Cache):
 
-    # document cached in Redis will be removed after 30 minutes, after that
+    # group keys cached in Redis will be removed after 30 minutes, after that
     # it will be reloaded from local storage if it's still need.
     EXPIRES = 1800  # seconds
 
     @property  # Override
     def db_name(self) -> Optional[str]:
-        return 'mkm'
+        return 'dkd'
 
     @property  # Override
     def tbl_name(self) -> str:
-        return 'document'
+        return 'group'
 
     """
-        Document for Entities (User/Group)
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        Encrypted keys
+        ~~~~~~~~~~~~~~
 
-        redis key: 'mkm.document.{ID}'
+        redis key: 'dkd.group.{GID}.{UID}.encrypted-keys'
     """
-    def __cache_name(self, identifier: ID) -> str:
-        return '%s.%s.%s' % (self.db_name, self.tbl_name, identifier)
+    def __cache_name(self, group: ID, sender: ID) -> str:
+        return '%s.%s.%s.%s.encrypted-keys' % (self.db_name, self.tbl_name, group, sender)
 
-    def document(self, identifier: ID, doc_type: Optional[str] = '*') -> Optional[Document]:
-        name = self.__cache_name(identifier=identifier)
+    def group_keys(self, group: ID, sender: ID) -> Optional[Dict[str, str]]:
+        name = self.__cache_name(group=group, sender=sender)
         value = self.get(name=name)
         if value is not None:
             js = utf8_decode(data=value)
             assert js is not None, 'failed to decode string: %s' % value
             info = json_decode(string=js)
             assert info is not None, 'document error: %s' % value
-            return parse_document(dictionary=info, identifier=identifier, doc_type=doc_type)
+            return info
 
-    def save_document(self, document: Document) -> bool:
-        identifier = document.identifier
-        dictionary = document.dictionary
-        js = json_encode(obj=dictionary)
+    def save_group_keys(self, group: ID, sender: ID, keys: Dict[str, str]) -> bool:
+        js = json_encode(obj=keys)
         value = utf8_encode(string=js)
-        name = self.__cache_name(identifier=identifier)
+        name = self.__cache_name(group=group, sender=sender)
         self.set(name=name, value=value, expires=self.EXPIRES)
         return True

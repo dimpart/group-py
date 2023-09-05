@@ -23,9 +23,9 @@
 # SOFTWARE.
 # ==============================================================================
 
-from typing import Optional, List, Dict
+from typing import Optional, List
 
-from dimples import utf8_encode, utf8_decode, json_encode, json_decode
+from dimples import utf8_encode, utf8_decode
 from dimples import ID
 
 from .base import Cache
@@ -33,9 +33,9 @@ from .base import Cache
 
 class GroupCache(Cache):
 
-    # group info cached in Redis will be removed after 10 hours, after that
+    # group info cached in Redis will be removed after 30 minutes, after that
     # it will be reloaded from local storage if it's still need.
-    EXPIRES = 36000  # seconds
+    EXPIRES = 1800  # seconds
 
     @property  # Override
     def db_name(self) -> Optional[str]:
@@ -45,74 +45,77 @@ class GroupCache(Cache):
     def tbl_name(self) -> str:
         return 'group'
 
-    def founder(self, identifier: ID) -> ID:
-        # TODO: get founder
-        pass
-
-    def owner(self, identifier: ID) -> ID:
-        # TODO: get owner
-        pass
-
     """
         Group members
         ~~~~~~~~~~~~~
 
         redis key: 'mkm.group.{ID}.members'
     """
-    def __members_key(self, identifier: ID) -> str:
+    def __members_cache_name(self, identifier: ID) -> str:
         return '%s.%s.%s.members' % (self.db_name, self.tbl_name, identifier)
 
+    def members(self, group: ID) -> Optional[List[ID]]:
+        key = self.__members_cache_name(identifier=group)
+        value = self.get(name=key)
+        if value is not None:
+            text = utf8_decode(data=value)
+            assert text is not None, 'failed to decode string: %s' % value
+            return ID.convert(array=text.splitlines())
+
     def save_members(self, members: List[ID], group: ID) -> bool:
-        members = ID.revert(array=members)
-        text = '\n'.join(members)
+        users = ID.revert(array=members)
+        text = '\n'.join(users)
         value = utf8_encode(string=text)
-        key = self.__members_key(identifier=group)
+        key = self.__members_cache_name(identifier=group)
         self.set(name=key, value=value, expires=self.EXPIRES)
         return True
 
-    def members(self, group: ID) -> List[ID]:
-        key = self.__members_key(identifier=group)
+    """
+        Group administrators
+        ~~~~~~~~~~~~~~~~~~~~
+
+        redis key: 'mkm.group.{ID}.administrators'
+    """
+    def __administrators_cache_name(self, identifier: ID) -> str:
+        return '%s.%s.%s.administrators' % (self.db_name, self.tbl_name, identifier)
+
+    def administrators(self, group: ID) -> Optional[List[ID]]:
+        key = self.__administrators_cache_name(identifier=group)
         value = self.get(name=key)
-        if value is None:
-            return []
-        text = utf8_decode(data=value)
-        return ID.convert(array=text.splitlines())
+        if value is not None:
+            text = utf8_decode(data=value)
+            assert text is not None, 'failed to decode string: %s' % value
+            return ID.convert(array=text.splitlines())
+
+    def save_administrators(self, administrators: List[ID], group: ID) -> bool:
+        users = ID.revert(array=administrators)
+        text = '\n'.join(users)
+        value = utf8_encode(string=text)
+        key = self.__administrators_cache_name(identifier=group)
+        self.set(name=key, value=value, expires=self.EXPIRES)
+        return True
 
     """
-        Group members
-        ~~~~~~~~~~~~~
+        Group assistants
+        ~~~~~~~~~~~~~~~~
 
         redis key: 'mkm.group.{ID}.assistants'
     """
+    def __assistants_cache_name(self, identifier: ID) -> str:
+        return '%s.%s.%s.assistants' % (self.db_name, self.tbl_name, identifier)
+
+    def assistants(self, group: ID) -> Optional[List[ID]]:
+        key = self.__assistants_cache_name(identifier=group)
+        value = self.get(name=key)
+        if value is not None:
+            text = utf8_decode(data=value)
+            assert text is not None, 'failed to decode string: %s' % value
+            return ID.convert(array=text.splitlines())
+
     def save_assistants(self, assistants: List[ID], group: ID) -> bool:
-        # TODO: store assistants with group ID
-        pass
-
-    def assistants(self, group: ID) -> List[ID]:
-        # TODO: get assistants with group ID
-        pass
-
-    """
-        Encrypted keys
-        ~~~~~~~~~~~~~~
-
-        redis key: 'mkm.group.{GID}.encrypted-keys'
-    """
-    def __keys_name(self, group: ID) -> str:
-        return '%s.%s.%s.encrypted-keys' % (self.db_name, self.tbl_name, group)
-
-    def save_keys(self, keys: Dict[str, str], sender: ID, group: ID) -> bool:
-        name = self.__keys_name(group=group)
-        key = str(sender)
-        js = json_encode(obj=keys)
-        value = utf8_encode(string=js)
-        self.hset(name=name, key=key, value=value)
+        bots = ID.revert(array=assistants)
+        text = '\n'.join(bots)
+        value = utf8_encode(string=text)
+        key = self.__assistants_cache_name(identifier=group)
+        self.set(name=key, value=value, expires=self.EXPIRES)
         return True
-
-    def load_keys(self, sender: ID, group: ID) -> Optional[Dict[str, str]]:
-        name = self.__keys_name(group=group)
-        key = str(sender)
-        value = self.hget(name=name, key=key)
-        if value is not None and len(value) > 2:
-            js = utf8_decode(data=value)
-            return json_decode(string=js)

@@ -2,7 +2,7 @@
 # ==============================================================================
 # MIT License
 #
-# Copyright (c) 2019 Albert Moky
+# Copyright (c) 2023 Albert Moky
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -24,92 +24,92 @@
 # ==============================================================================
 
 import time
-from typing import Optional
+from typing import Optional, Tuple
 
-from dimples import ID, Document
+from dimples import ID, ReliableMessage
+from dimples import ResetCommand
 
 from dimples.utils import CacheManager
-from dimples.common import DocumentDBI
+from dimples.common import ResetGroupDBI
 from dimples.common.dbi import is_expired
-from dimples.database import DocumentStorage
 
-from .redis import DocumentCache
+from .dos import ResetGroupStorage
+from .redis import ResetGroupCache
 
 
-class DocumentTable(DocumentDBI):
-    """ Implementations of DocumentDBI """
+class ResetGroupTable(ResetGroupDBI):
+    """ Implementations of ResetGroupDBI """
 
     CACHE_EXPIRES = 300    # seconds
     CACHE_REFRESHING = 32  # seconds
 
     def __init__(self, root: str = None, public: str = None, private: str = None):
         super().__init__()
-        self.__dos = DocumentStorage(root=root, public=public, private=private)
-        self.__redis = DocumentCache()
+        self.__dos = ResetGroupStorage(root=root, public=public, private=private)
+        self.__redis = ResetGroupCache()
         man = CacheManager()
-        self.__doc_cache = man.get_pool(name='document')  # ID => Document
+        self.__reset_cache = man.get_pool(name='group.reset')  # ID => (ResetCommand, ReliableMessage)
 
     def show_info(self):
         self.__dos.show_info()
 
-    def _is_expired(self, document: Document) -> bool:
-        """ check old record with document time """
-        new_time = document.time
+    def _is_expired(self, group: ID, content: ResetCommand) -> bool:
+        """ check old record with command time """
+        new_time = content.time
         if new_time is None or new_time <= 0:
             return False
-        doc_type = document.type
-        if doc_type is None:
-            doc_type = '*'
         # check old record
-        old = self.document(identifier=document.identifier, doc_type=doc_type)
+        old, _ = self.reset_command_message(group=group)
         if old is not None and is_expired(old_time=old.time, new_time=new_time):
-            # cache expired, drop it
-            return True
-
-    #
-    #   Document DBI
-    #
-
-    # Override
-    def save_document(self, document: Document) -> bool:
-        assert document.valid, 'document invalid: %s' % document
-        # 0. check document time
-        if self._is_expired(document=document):
-            # document expired, drop it
+            # command expired
             return False
-        identifier = document.identifier
-        # 1. store into memory cache
-        self.__doc_cache.update(key=identifier, value=document, life_span=self.CACHE_EXPIRES)
-        # 2. store into redis server
-        self.__redis.save_document(document=document)
-        # 3. save into local storage
-        return self.__dos.save_document(document=document)
+
+    #
+    #   Reset Group DBI
+    #
 
     # Override
-    def document(self, identifier: ID, doc_type: Optional[str] = '*') -> Optional[Document]:
+    def save_reset_command_message(self, group: ID, content: ResetCommand, msg: ReliableMessage) -> bool:
+        assert group == content.group, 'content group not match: %s => %s' % (group, content.group)
+        # 0. check command time
+        if self._is_expired(group=group, content=content):
+            # command expired, drop it
+            return False
+        value = (content, msg)
+        # 1. store into memory cache
+        self.__reset_cache.update(key=group, value=value, life_span=self.CACHE_EXPIRES)
+        # 2. store into redis server
+        self.__redis.save_reset(group=group, content=content, msg=msg)
+        # 3. store into local storage
+        return self.__dos.save_reset_command_message(group=group, content=content, msg=msg)
+
+    # Override
+    def reset_command_message(self, group: ID) -> Tuple[Optional[ResetCommand], Optional[ReliableMessage]]:
+        """ get reset command message for group """
         now = time.time()
         # 1. check memory cache
-        value, holder = self.__doc_cache.fetch(key=identifier, now=now)
+        value, holder = self.__reset_cache.fetch(key=group, now=now)
         if value is None:
             # cache empty
             if holder is None:
                 # cache not load yet, wait to load
-                self.__doc_cache.update(key=identifier, life_span=self.CACHE_REFRESHING, now=now)
+                self.__reset_cache.update(key=group, life_span=self.CACHE_REFRESHING, now=now)
             else:
                 if holder.is_alive(now=now):
                     # cache not exists
-                    return None
+                    return None, None
                 # cache expired, wait to reload
                 holder.renewal(duration=self.CACHE_REFRESHING, now=now)
             # 2. check redis server
-            value = self.__redis.document(identifier=identifier, doc_type=doc_type)
-            if value is None:
+            cmd, msg = self.__redis.load_reset(group=group)
+            if msg is None and cmd is not None:
+                # cmd is a placeholder here
                 # 3. check local storage
-                value = self.__dos.document(identifier=identifier, doc_type=doc_type)
-                if value is not None:
-                    # update redis server
-                    self.__redis.save_document(document=value)
+                cmd, msg = self.__dos.reset_command_message(group=group)
+                # update redis server
+                self.__redis.save_reset(group=group, content=cmd, msg=msg)
+            value = (cmd, msg)
             # update memory cache
-            self.__doc_cache.update(key=identifier, value=value, life_span=self.CACHE_EXPIRES, now=now)
+            self.__reset_cache.update(key=group, value=value, life_span=self.CACHE_EXPIRES, now=now)
         # OK, return cached value
         return value
