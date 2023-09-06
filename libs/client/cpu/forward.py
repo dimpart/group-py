@@ -27,9 +27,14 @@
 from typing import List
 
 from dimples import ID, ReliableMessage
-from dimples import Content, ForwardContent
+from dimples import Content, ForwardContent, ArrayContent
 from dimples import BaseContentProcessor
 from dimples import CommonFacebook, CommonMessenger
+
+
+def forward_messages(messages: List[ReliableMessage]) -> List[Content]:
+    """ Convert reliable messages to forward contents """
+    return [] if len(messages) == 0 else [ForwardContent.create(messages=messages)]
 
 
 class ForwardContentProcessor(BaseContentProcessor):
@@ -56,25 +61,31 @@ class ForwardContentProcessor(BaseContentProcessor):
         assert isinstance(content, ForwardContent), 'forward content error: %s' % content
         secrets = content.secrets
         messenger = self.messenger
-        responses = []
+        array = []
         for item in secrets:
             receiver = item.receiver
+            group = item.group
             if receiver.is_group:
                 # group message
-                res = self.__split_group_message(group=receiver, msg=item)
-            elif receiver.is_broadcast and item.group is not None:
+                assert not receiver.is_broadcast, 'message error: %s => %s' % (item.sender, receiver)
+                results = self.__split_group_message(group=receiver, msg=item)
+            elif receiver.is_broadcast and group is not None:
                 # group command
-                res = self.__process_group_command(group=item.group, msg=item)
+                assert not group.is_broadcast, 'message error: %s => %s (%s)' % (item.sender, receiver, group)
+                results = self.__process_group_command(group=group, msg=item)
             else:
-                results = messenger.process_reliable_message(msg=item)
-                if len(results) == 1:
-                    res = ForwardContent.create(message=results[0])
-                else:
-                    res = ForwardContent.create(messages=results)
-            responses.append(res)
-        return responses
+                responses = messenger.process_reliable_message(msg=item)
+                results = forward_messages(messages=responses)
+            # NOTICE: append one result for each forwarded message here.
+            #         if result is more than one content, append an array content;
+            #         if result is empty, append an empty array content too.
+            if len(results) == 1:
+                array.append(results[0])
+            else:
+                array.append(ArrayContent.create(contents=results))
+        return array
 
-    def __split_group_message(self, group: ID, msg: ReliableMessage) -> Content:
+    def __split_group_message(self, group: ID, msg: ReliableMessage) -> List[Content]:
         facebook = self.facebook
         # 1. check members
         members = facebook.members(identifier=group)
@@ -85,13 +96,13 @@ class ForwardContentProcessor(BaseContentProcessor):
                 'replacements': {
                     'ID': str(group),
                 }
-            })[0]
+            })
         recipients = members.copy()
         # 2. deliver group message for each members
         recipients.remove(sender)
         return self.__distribute_group_message(msg=msg, group=group, recipients=recipients)
 
-    def __process_group_command(self, group: ID, msg: ReliableMessage) -> Content:
+    def __process_group_command(self, group: ID, msg: ReliableMessage) -> List[Content]:
         facebook = self.facebook
         messenger = self.messenger
         # 1. get members before
@@ -103,10 +114,10 @@ class ForwardContentProcessor(BaseContentProcessor):
                 'replacements': {
                     'ID': str(group),
                 }
-            })[0]
+            })
         recipients = members.copy()
         # 2. process message
-        messenger.process_reliable_message(msg=msg)
+        responses = messenger.process_reliable_message(msg=msg)
         # 3. get members after
         members = facebook.members(identifier=group)
         for item in members:
@@ -114,23 +125,28 @@ class ForwardContentProcessor(BaseContentProcessor):
                 recipients.append(item)
         # 4. deliver group message for each members
         recipients.remove(sender)
-        return self.__distribute_group_message(msg=msg, group=group, recipients=recipients)
+        array = self.__distribute_group_message(msg=msg, group=group, recipients=recipients)
+        # 5. merge responses
+        results = forward_messages(messages=responses)
+        for item in array:
+            results.append(item)
+        return results
 
-    def __distribute_group_message(self, msg: ReliableMessage, group: ID, recipients: List[ID]) -> Content:
-        distributor = get_distributor()
-        members = []
-        for item in recipients:
-            if distributor.deliver(receiver=item, msg=msg):
-                members.append(item)
+    def __distribute_group_message(self, msg: ReliableMessage, group: ID, recipients: List[ID]) -> List[Content]:
+        distributor = get_distributor(messenger=self.messenger)
+        members, missing = distributor.deliver(msg=msg, group=group, recipients=recipients)
         # OK
         return self._respond_receipt(text='Group messages are distributing.', msg=msg, group=group, extra={
             'template': 'Group messages are distributing to members: ${members}',
             'replacements': {
                 'members': ID.revert(array=members),
-            }
-        })[0]
+            },
+            'missing_keys': ID.revert(array=missing)
+        })
 
 
-def get_distributor():
-    from ..distributor import Distributor
-    return Distributor()
+def get_distributor(messenger: CommonMessenger):
+    from ..receptionist import Receptionist
+    receptionist = Receptionist()
+    receptionist.messenger = messenger
+    return receptionist.distributor

@@ -33,10 +33,11 @@
 
 import sys
 import os
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from dimples import EntityType
-from dimples import ContentType
+from dimples import ReliableMessage
+from dimples import ContentType, Content
 from dimples import ContentProcessor, ContentProcessorCreator
 from dimples.utils import Log
 
@@ -46,6 +47,7 @@ sys.path.append(rootPath)
 
 from libs.client.cpu import ForwardContentProcessor
 from libs.client import ClientProcessor, ClientContentProcessorCreator
+from libs.client import Receptionist
 
 from bots.shared import start_bot
 
@@ -62,6 +64,11 @@ class AssistantContentProcessorCreator(ClientContentProcessorCreator):
 
 
 class AssistantProcessor(ClientProcessor):
+
+    # Override
+    def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
+        g_receptionist.touch(identifier=r_msg.sender, when=content.time)
+        return super().process_content(content=content, r_msg=r_msg)
 
     # Override
     def _create_creator(self) -> ContentProcessorCreator:
@@ -87,3 +94,7 @@ if __name__ == '__main__':
     current_user = facebook.current_user
     bot_id = current_user.identifier
     assert bot_id.type == EntityType.BOT, 'bot ID error: %s' % current_user
+    # start receptionist
+    g_receptionist = Receptionist()
+    g_receptionist.messenger = messenger
+    g_receptionist.start()

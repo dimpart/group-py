@@ -47,6 +47,7 @@ from .t_document import DocumentTable
 from .t_group import GroupTable
 from .t_group_reset import ResetGroupTable
 from .t_group_keys import GroupKeysTable
+from .t_group_inbox import GroupInboxMessageTable
 
 
 class Database(AccountDBI, MessageDBI, SessionDBI):
@@ -64,6 +65,7 @@ class Database(AccountDBI, MessageDBI, SessionDBI):
         # Message
         self.__grp_keys_table = GroupKeysTable(root=root, public=public, private=private)
         self.__cipherkey_table = CipherKeyTable(root=root, public=public, private=private)
+        self.__inbox_table = GroupInboxMessageTable(root=root, public=public, private=private)
         # # ANS
         # self.__ans_table = AddressNameTable(root=root, public=public, private=private)
 
@@ -320,6 +322,23 @@ class Database(AccountDBI, MessageDBI, SessionDBI):
     # Override
     def remove_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
         return True
+
+    """
+        Group Inbox
+        ~~~~~~~~~~~
+        
+        redis key: 'dkd.grp_msg.{ID}.{sig}'
+        redis key: 'dkd.grp_msg.{ID}.messages'
+    """
+
+    def inbox_reliable_messages(self, receiver: ID, limit: int = 1024) -> List[ReliableMessage]:
+        return self.__inbox_table.reliable_messages(receiver=receiver, limit=limit)
+
+    def inbox_cache_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
+        return self.__inbox_table.cache_reliable_message(msg=msg, receiver=receiver)
+
+    def inbox_remove_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
+        return self.__inbox_table.remove_reliable_message(msg=msg, receiver=receiver)
 
     """
         Message Keys

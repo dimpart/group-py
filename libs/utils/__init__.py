@@ -34,7 +34,7 @@
 """
 
 from startrek.fsm import Runnable, Runner
-from ipx import Notification, NotificationObserver, NotificationCenter as DefaultNotificationCenter
+# from ipx import Notification, NotificationObserver, NotificationCenter as DefaultNotificationCenter
 
 from dimples.utils import utf8_encode, utf8_decode
 from dimples.utils import json_encode, json_decode
@@ -44,16 +44,20 @@ from dimples.utils import File, TextFile, JSONFile
 from dimples.utils import Singleton
 from dimples.utils import Log, Logging
 
+from dimples.conn.session import get_sig as get_msg_sig
 
-@Singleton
-class NotificationCenter(DefaultNotificationCenter):
-    pass
+
+# @Singleton
+# class NotificationCenter(DefaultNotificationCenter):
+#     pass
 
 
 __all__ = [
 
+    'get_msg_sig',
+
     'Runnable', 'Runner',
-    'Notification', 'NotificationObserver', 'NotificationCenter',
+    # 'Notification', 'NotificationObserver', 'NotificationCenter',
 
     'Log', 'Logging',
     'Singleton',

@@ -57,6 +57,11 @@ __all__ = [
     'DocumentCache',
     'GroupCache',
 
+    'GroupKeysCache',
+    'ResetGroupCache',
+
+    'GroupInboxMessageCache',
+
     #
     #   Database
     #

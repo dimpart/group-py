@@ -33,6 +33,10 @@ from dimples.client import *
 from dimples.client import ClientMessageProcessor as ClientProcessor
 from dimples.client import ClientMessagePacker as ClientPacker
 
+# from .receptionist import Footprint
+# from .receptionist import Distributor
+from .receptionist import Receptionist
+
 
 __all__ = [
 
@@ -45,5 +49,9 @@ __all__ = [
     'Terminal',
 
     'ClientPacker', 'ClientProcessor',
+
+    # 'Footprint',
+    # 'Distributor',
+    'Receptionist',
 
 ]

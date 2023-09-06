@@ -36,6 +36,8 @@ from .group import GroupCache
 from .group_keys import GroupKeysCache
 from .group_reset import ResetGroupCache
 
+from .group_inbox import GroupInboxMessageCache
+
 
 __all__ = [
 
@@ -45,4 +47,6 @@ __all__ = [
 
     'GroupKeysCache',
     'ResetGroupCache',
+
+    'GroupInboxMessageCache',
 ]
