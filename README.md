@@ -2,15 +2,14 @@
 
 DIM group is decentralized, there's no central database to store the membership, so we need a consensus mechanism to manage it.
 
-Here I designed a group bot ```assistant``` for maintaining the group information (group name, founder, owner, members, administrators, assistants, etc...),
-and serving the members to split and redirect group messages.
+Here I designed a group bot ```assistant``` for serving the members to split and redirect group messages, helping to maintain the group information (bulletin document and history commands which will defined the group name, founder, owner, members, administrators, assistants, etc...).
 
 ## Bulletin (Group Document)
 
 The bulletin is a document for group, which has a JsON data includes:
 
 Data Field     | Description
----------------|------------------------------------------------------------------
+---------------|----------------------------------------------------------------
 name           | group title
 founder        | group creator
 owner          | same as founder in current version
@@ -19,16 +18,15 @@ administrators | modified by owner only
 created_time   |
 modified_time  | (OPTIONAL)
 
-* All the fields above must be set in ```bulletin.data``` and signed by the owner or founder.
+* All the fields above must be set in ```doc.data``` and signed by the owner or founder.
 
-The bulletin from the group bot to all members (owner + admins + members) can also have a field in the top level containing group command messages before they have been commited by the owner or any administrator:
+The bulletin from the group bot to all members (owner + admins + members) can also have a field in the top level containing ```resign``` group command messages before they have been commited by the owner:
 
 Bulletin Field | Description
----------------|------------------------------------------------------------------
-resignations   | admin's resign command, or ordinary member's quit command
-confirmations  | signatures of resignations to respond to the bot after committed
+---------------|----------------------------------------------------------------
+resignations   | admin's resign commands
 
-If the owner received ```resign``` commands in bulletin.resignations, it should update the bulletin and send the new one back to the bot:
+If the owner received ```resign``` commands in bulletin.resignations, it must update the bulletin and send the new one back to the bot:
 
 ```python
 	administrator_list = ID.revert(array=new_administrators)
@@ -36,34 +34,30 @@ If the owner received ```resign``` commands in bulletin.resignations, it should 
 	bulletin.sign(private_key=private_key);
 ```
 
-If the owner or any administrator received ```quit``` commands in bulletin.resignnations, they should update member list and send a ```reset``` command back to the bot;
-
-The owner or administrator should remove the committed resignations and put their signatures in ```confirmations``` of new bulletin and send back to the bot.
-
 ## Group Commands
 
 Group commands are the special messages for maintaining membership:
 
 * When a stranger want to join the group, a ```join``` command should be sent to all administrators (owner + admins) and wait for review;
 * When an ordinary member wanna invite a new member, an ```invite``` command should be sent to all administrators and wait for review;
-* When an ordinary member want to quit, a ```quit``` command would be sent to all members (owner + admins + members), and the owner or any administrator should change the member list when they received it;
+* When an ordinary member want to quit, a ```quit``` command would be sent to all members (owner + admins + members), and the owner or any administrator should review to change the member list when they received it;
 * When an admin want to resign, a ```resign``` command would be sent to all members, and the owner should change the field ```administrators``` in bulletin.data when it received.
 
-Command Name | Description
--------------|--------------------------------------
-found        | create a new group
-abdicate     | transfer ownership to another member
-**invite**   | add new member(s)
-expel        | remove member(s)
-**join**     | add myself as new member
-**quit**     | remove myself from member list
-**reset**    | update member list
-**query**    | query member list
-hire         | add new administrator(s)
-fire         | remove administrator(s)
-**resign**   | remove myself from administrator list
+Command Name   | Description                                   | /
+---------------|-----------------------------------------------|----------------
+found          | create a new group                            | Reserved
+abdicate       | transfer ownership to another member          | Reserved
+**invite**     | add new member(s)                             |
+expel          | remove member(s)                              | Deprecated
+**join**       | add myself as a new member                    |
+**quit**       | remove myself from member list                |
+**reset**      | update member list                            |
+**query**      | query member list                             |
+hire           | add new administrator(s)                      | Reserved
+fire           | remove administrator(s)                       | Reserved
+**resign**     | remove myself from administrator list         |
 
-Group commands should be a broadcast message with group ID:
+Group command message should be a broadcast message with group ID:
 
 ```python
 	msg.receiver = "members@anywhere";
@@ -71,7 +65,7 @@ Group commands should be a broadcast message with group ID:
 	msg.data     = plaintext;       # json_encode(group_command_content)
 ```
 
-it will be sent to the group bot to let it knows the latest membership:
+It will be forwarded to the group bots:
 
 ```python
 	msg.receiver = bot_id;
@@ -79,8 +73,7 @@ it will be sent to the group bot to let it knows the latest membership:
 	msg.data     = encrypted_data;  # forward command for the broadcast message
 ```
 
-So the group bot can know which destination they should go,
-when the actual recipient online, the bot will redirect the splitted message for it:
+and the primary group bot will redirect it to all other members:
 
 ```python
 	msg.receiver = member_id;
@@ -88,18 +81,44 @@ when the actual recipient online, the bot will redirect the splitted message for
 	msg.data     = encrypted_data;  # forward command for the broadcast message
 ```
 
+after that, the group bot can know each message's destination, when the actual recipient online, the bot will redirect the splitted message for it.
+
 Here are the broadcast receivers for group commands:
 
-         | anyone@ | owner@ | members@      | administrators@ | assistants@
----------|---------|--------|---------------|-----------------|-------------
-founder  | found   | ?      |               |                 |
-owner    | -       | ?      | reset         | -               | query
-admin    | -       | -      | reset, resign | -               | query
-member   | -       | -      | quit          | invite          | query
-stranger | -       | -      | -             | join            | -
+          | anyone@ | owner@ | members@      | administrators@ | assistants@
+----------|---------|--------|---------------|-----------------|-------------
+founder   | found   |        |               |                 |
+owner     |         | -      | reset         | -               | query
+admin     |         | query  | reset, resign | -               | query
+member    |         | -      | quit          | query, invite   | query
+assistant |         |        |               | query           |
+stranger  |         |        |               | join            |
 
-* members@anywhere => all members (owner + admins + members)
-* administrators@anywhere => all administrators (owner + admins)
+* ```members@anywhere``` => all members (owner + admins + members)
+* ```administrators@anywhere``` => all administrators (owner + admins)
+* When group bot not designated, the admins should query new member list from the owner, and other members should query from the administrators.
+
+## Group History
+
+### Reset
+
+The ```reset``` group command will update the group members, so all other commands (invite, expel, join, quit) before it should be cleared;
+
+This command can be sent by administrators (owner + admins).
+
+### Invite, Join, Quit
+
+The ```invite``` & ```join``` group commands should wait for review, so they will be stored in the administrators's local storage and review by them and comfirm to update.
+
+The ```quit``` group commands will cause removing member immediately, and they will be stored in all members' local storage untill any administrator confirmed the update.
+
+All the above will form a command list stored by all members and group bots, untill new ```reset``` command to clean them.
+
+### Resign
+
+The ```resign``` commands will cause removing administrator immediately, and they will be stored by all members and group bots untill new document signed by the owner to clean them;
+
+These commands cannot be clean by ```reset```, and they will be sent as an attachment: ```doc.resignations ``` in the bulletin document.
 
 ## Messaging
 
@@ -125,7 +144,9 @@ when the receivers online, the bot will redirect the splitted messages for them:
 ```
 
 **NOTICE:**
-Don't encrypt the symmetric key for the group bot, because the bot should never decrypt the message content!
+
+1. Don't encrypt the symmetric key for the group bot, because the bot should never decrypt the message content;
+2. When group bot not designated, the members should split group messages by themselves.
 
 ## Roles Definition
 
@@ -181,7 +202,7 @@ Group permissions include modifying bulletin and changing membership.
 name               | YES     | YES   | -              | -       | -                 | -
 founder            | CONST   | -     | -              | -       | -                 | -
 owner              | ?       | ?     | -              | -       | -                 | -
-assistants         | YES     | -     | -              | -       | -                 | -
+assistants         | YES     | ?     | -              | -       | -                 | -
 admins             | -       | YES   | -              | -       | -                 | -
 created time       | CONST   | -     | -              | -       | -                 | -
 modified time      | YES     | YES   | -              | -       | -                 | -
@@ -194,7 +215,7 @@ modified time      | YES     | YES   | -              | -       | -             
                    | Founder | Owner | Administrators | Members | Assistants (Bots) | Strangers
 -------------------|:-------:|:-----:|:--------------:|:-------:|:-----------------:|:---------:
 change owner       | ?       | ?     | -              | -       | -                 | -
-change assistants  | YES     | -     | -              | -       | -                 | -
+change assistants  | YES     | ?     | -              | -       | -                 | -
 hire/fire admins   | -       | YES   | -              | -       | -                 | -
 resign admin       | -       | -     | YES            | -       | -                 | -
 invite members     | -       | YES   | YES            | YES     | -                 | -
@@ -202,11 +223,11 @@ review members     | -       | YES   | YES            | -       | -             
 expel members      | -       | YES   | YES            | -       | -                 | -
 join group         | -       | -     | -              | -       | -                 | YES
 quit group         | NEVER   | -     | -              | YES     | -                 | -
-*query membership* | *YES*   | *YES* | *YES*          | *YES*   | *YES*             | -
+*query membership* | -       | *YES* | *YES*          | *YES*   | *YES*             | -
 
 * The group owner/administrators cannot quit until they are retired.
 * The group assistants (bots) only redirect messages, cannot modify membership;
-* When a stranger want to join the group, or be invited, a command will be sent to the bots, and then redirect to the owner and all administrators;
+* When a stranger want to join the group, or be invited, a command will be sent to the bots, and then redirect to all administrators (owner + admins);
 * The owner or any administrator can review the invite/join application.
 
 ----
