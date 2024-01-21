@@ -23,13 +23,14 @@
 # SOFTWARE.
 # ==============================================================================
 
-import time
 from typing import List
 
-from dimples.utils import CacheManager
+from dimples import DateTime
 from dimples import ID
 from dimples import ReliableMessage
 from dimples import ReliableMessageDBI
+
+from dimples.utils import CacheManager
 
 from .redis import GroupInboxMessageCache
 
@@ -57,7 +58,7 @@ class GroupInboxMessageTable(ReliableMessageDBI):
 
     # Override
     def reliable_messages(self, receiver: ID, limit: int = 1024) -> List[ReliableMessage]:
-        now = time.time()
+        now = DateTime.now()
         # 1. check memory cache
         value, holder = self.__cache.fetch(key=receiver, now=now)
         if value is None:

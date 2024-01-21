@@ -23,12 +23,13 @@
 # SOFTWARE.
 # ==============================================================================
 
-import time
 from typing import Optional, Dict
 
-from dimples.utils import CacheManager
+from dimples import DateTime
 from dimples import ID
 from dimples import GroupKeysDBI
+
+from dimples.utils import CacheManager
 
 from .dos import GroupKeysStorage
 from .redis import GroupKeysCache
@@ -75,7 +76,7 @@ class GroupKeysTable(GroupKeysDBI):
 
     # Override
     def group_keys(self, group: ID, sender: ID) -> Optional[Dict[str, str]]:
-        now = time.time()
+        now = DateTime.now()
         identifier = (group, sender)
         # 1. check memory cache
         value, holder = self.__keys_cache.fetch(key=group, now=now)

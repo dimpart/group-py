@@ -33,38 +33,92 @@
                                              -- Albert Moky @ Jan. 23, 2019
 """
 
+from typing import Optional
+
 from startrek.fsm import Runnable, Runner
-# from ipx import Notification, NotificationObserver, NotificationCenter as DefaultNotificationCenter
 
-from dimples.utils import utf8_encode, utf8_decode
-from dimples.utils import json_encode, json_decode
+from dimples import *
+from dimples.utils import *
 
-from dimples.utils import Path
-from dimples.utils import File, TextFile, JSONFile
-from dimples.utils import Singleton
-from dimples.utils import Log, Logging
+from dimples.group.manager import find
+from dimples.database.dos.document import parse_document
 
-from dimples.conn.session import get_sig as get_msg_sig
+from .pnf import get_filename, get_extension
+from .pnf import get_cache_name
+from .pnf import filename_from_url, filename_from_data
 
 
-# @Singleton
-# class NotificationCenter(DefaultNotificationCenter):
-#     pass
+@Singleton
+class Footprint:
+
+    EXPIRES = 36000  # vanished after 10 hours
+
+    def __init__(self):
+        super().__init__()
+        self.__active_times = {}  # ID => DateTime
+
+    def __get_time(self, identifier: ID, when: Optional[DateTime]) -> Optional[DateTime]:
+        now = DateTime.now()
+        if when is None or when <= 0 or when >= now:
+            return now
+        elif when > self.__active_times.get(identifier, 0):
+            return when
+        # else:
+        #     # time expired, drop it
+        #     return None
+
+    def touch(self, identifier: ID, when: DateTime = None):
+        when = self.__get_time(identifier=identifier, when=when)
+        if when is not None:
+            self.__active_times[identifier] = when
+            return True
+
+    def is_vanished(self, identifier: ID, now: DateTime = None) -> bool:
+        last_time = self.__active_times.get(identifier)
+        if last_time is None:
+            return True
+        if now is None:
+            now = DateTime.now()
+        return now > (last_time + self.EXPIRES)
 
 
 __all__ = [
 
-    'get_msg_sig',
-
-    'Runnable', 'Runner',
-    # 'Notification', 'NotificationObserver', 'NotificationCenter',
-
-    'Log', 'Logging',
-    'Singleton',
-
+    'md5', 'sha1', 'sha256', 'keccak256', 'ripemd160',
+    'base64_encode', 'base64_decode', 'base58_encode', 'base58_decode',
+    'hex_encode', 'hex_decode',
     'utf8_encode', 'utf8_decode',
     'json_encode', 'json_decode',
 
-    'Path',
-    'File', 'TextFile', 'JSONFile',
+    'random_bytes',
+
+    'Converter',
+
+    'Runnable', 'Runner',
+
+    'Singleton',
+    'Log', 'Logging',
+    'Path', 'File', 'TextFile', 'JSONFile',
+    'CachePool', 'CacheHolder', 'CacheManager',
+    'FrequencyChecker', 'RecentTimeChecker',
+
+    'Config',
+
+    'is_before',
+    'get_msg_sig',
+    'template_replace',
+
+    'find',
+
+    'parse_document',
+
+    #
+    #   PNF
+    #
+    'get_filename', 'get_extension',
+    'get_cache_name',
+    'filename_from_url', 'filename_from_data',
+
+    'Footprint',
+
 ]

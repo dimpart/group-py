@@ -37,8 +37,6 @@ from .forward import ForwardContentProcessor
 
 __all__ = [
 
-    'TextContentProcessor',
-
     'HandshakeCommandProcessor',
     'LoginCommandProcessor',
 

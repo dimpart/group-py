@@ -32,10 +32,9 @@
 from .meta import MetaCache
 from .document import DocumentCache
 from .group import GroupCache
+from .grp_history import GroupHistoryCache
 
 from .group_keys import GroupKeysCache
-from .group_reset import ResetGroupCache
-
 from .group_inbox import GroupInboxMessageCache
 
 
@@ -43,10 +42,8 @@ __all__ = [
 
     'MetaCache',
     'DocumentCache',
-    'GroupCache',
+    'GroupCache', 'GroupHistoryCache',
 
     'GroupKeysCache',
-    'ResetGroupCache',
-
     'GroupInboxMessageCache',
 ]

@@ -29,12 +29,17 @@
 
 """
 
-from dimples.client import *
+from dimples.client import Terminal
+from dimples.client import ClientSession, SessionState
+from dimples.client import ClientContentProcessorCreator
+from dimples.client import ClientMessenger
 from dimples.client import ClientMessageProcessor as ClientProcessor
-from dimples.client import ClientMessagePacker as ClientPacker
 
-# from .receptionist import Footprint
-# from .receptionist import Distributor
+from .packer import ClientPacker
+from .emitter import Emitter
+
+from .group import SharedGroupManager
+
 from .receptionist import Receptionist
 
 
@@ -43,15 +48,16 @@ __all__ = [
     #
     #   Client
     #
+    'Terminal',
     'ClientSession', 'SessionState',
     'ClientContentProcessorCreator',
     'ClientMessenger',
-    'Terminal',
+    'ClientProcessor',
+    'ClientPacker',
+    'Emitter',
 
-    'ClientPacker', 'ClientProcessor',
+    'SharedGroupManager',
 
-    # 'Footprint',
-    # 'Distributor',
     'Receptionist',
 
 ]

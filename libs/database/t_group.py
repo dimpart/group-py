@@ -23,13 +23,13 @@
 # SOFTWARE.
 # ==============================================================================
 
-import time
-from typing import List
+from typing import Optional, List
 
+from dimples import DateTime
 from dimples import ID
 
 from dimples.utils import CacheManager
-from dimples import GroupDBI
+from dimples.common import GroupDBI
 
 from .dos import GroupStorage
 from .redis import GroupCache
@@ -38,8 +38,8 @@ from .redis import GroupCache
 class GroupTable(GroupDBI):
     """ Implementations of GroupDBI """
 
-    CACHE_EXPIRES = 300    # seconds
-    CACHE_REFRESHING = 32  # seconds
+    CACHE_EXPIRES = 60    # seconds
+    CACHE_REFRESHING = 8  # seconds
 
     def __init__(self, root: str = None, public: str = None, private: str = None):
         super().__init__()
@@ -58,8 +58,16 @@ class GroupTable(GroupDBI):
     #
 
     # Override
+    def founder(self, group: ID) -> Optional[ID]:
+        pass
+
+    # Override
+    def owner(self, group: ID) -> Optional[ID]:
+        pass
+
+    # Override
     def members(self, group: ID) -> List[ID]:
-        now = time.time()
+        now = DateTime.now()
         # 1. check memory cache
         value, holder = self.__members_cache.fetch(key=group, now=now)
         if value is None:
@@ -97,7 +105,7 @@ class GroupTable(GroupDBI):
     # Override
     def assistants(self, group: ID) -> List[ID]:
         """ get assistants of group """
-        now = time.time()
+        now = DateTime.now()
         # 1. check memory cache
         value, holder = self.__assistants_cache.fetch(key=group, now=now)
         if value is None:
@@ -135,7 +143,7 @@ class GroupTable(GroupDBI):
     # Override
     def administrators(self, group: ID) -> List[ID]:
         """ get administrators of group """
-        now = time.time()
+        now = DateTime.now()
         # 1. check memory cache
         value, holder = self.__administrators_cache.fetch(key=group, now=now)
         if value is None:

@@ -68,11 +68,11 @@ class ForwardContentProcessor(BaseContentProcessor):
             if receiver.is_group:
                 # group message
                 assert not receiver.is_broadcast, 'message error: %s => %s' % (item.sender, receiver)
-                results = self.__split_group_message(group=receiver, msg=item)
+                results = self.__split_group_message(group=receiver, content=content, msg=item)
             elif receiver.is_broadcast and group is not None:
                 # group command
                 assert not group.is_broadcast, 'message error: %s => %s (%s)' % (item.sender, receiver, group)
-                results = self.__process_group_command(group=group, msg=item)
+                results = self.__process_group_command(group=group, content=content, msg=item)
             else:
                 responses = messenger.process_reliable_message(msg=item)
                 results = forward_messages(messages=responses)
@@ -85,13 +85,13 @@ class ForwardContentProcessor(BaseContentProcessor):
                 array.append(ArrayContent.create(contents=results))
         return array
 
-    def __split_group_message(self, group: ID, msg: ReliableMessage) -> List[Content]:
+    def __split_group_message(self, group: ID, content: Content, msg: ReliableMessage) -> List[Content]:
         facebook = self.facebook
         # 1. check members
         members = facebook.members(identifier=group)
         sender = msg.sender
         if sender not in members:
-            return self._respond_receipt(text='Permission denied.', msg=msg, group=group, extra={
+            return self._respond_receipt(text='Permission denied.', content=content, envelope=msg.envelope, extra={
                 'template': 'You are not a member of group: ${ID}',
                 'replacements': {
                     'ID': str(group),
@@ -100,16 +100,17 @@ class ForwardContentProcessor(BaseContentProcessor):
         recipients = members.copy()
         # 2. deliver group message for each members
         recipients.remove(sender)
-        return self.__distribute_group_message(msg=msg, group=group, recipients=recipients)
+        return self.__distribute_group_message(recipients=recipients, group=group, content=content, msg=msg)
 
-    def __process_group_command(self, group: ID, msg: ReliableMessage) -> List[Content]:
+    def __process_group_command(self, group: ID, content: Content, msg: ReliableMessage) -> List[Content]:
         facebook = self.facebook
         messenger = self.messenger
         # 1. get members before
         members = facebook.members(identifier=group)
         sender = msg.sender
         if sender not in members:
-            return self._respond_receipt(text='Permission denied.', msg=msg, group=group, extra={
+            text = 'Permission denied.'
+            return self._respond_receipt(text=text, content=content, envelope=msg.envelope, extra={
                 'template': 'You are not a member of group: ${ID}',
                 'replacements': {
                     'ID': str(group),
@@ -125,18 +126,20 @@ class ForwardContentProcessor(BaseContentProcessor):
                 recipients.append(item)
         # 4. deliver group message for each members
         recipients.remove(sender)
-        array = self.__distribute_group_message(msg=msg, group=group, recipients=recipients)
+        array = self.__distribute_group_message(recipients=recipients, group=group, content=content, msg=msg)
         # 5. merge responses
         results = forward_messages(messages=responses)
         for item in array:
             results.append(item)
         return results
 
-    def __distribute_group_message(self, msg: ReliableMessage, group: ID, recipients: List[ID]) -> List[Content]:
+    def __distribute_group_message(self, recipients: List[ID], group: ID,
+                                   content: Content, msg: ReliableMessage) -> List[Content]:
         distributor = get_distributor(messenger=self.messenger)
         members, missing = distributor.deliver(msg=msg, group=group, recipients=recipients)
         # OK
-        return self._respond_receipt(text='Group messages are distributing.', msg=msg, group=group, extra={
+        text = 'Group messages are distributing.'
+        return self._respond_receipt(text=text, content=content, envelope=msg.envelope, extra={
             'template': 'Group messages are distributing to members: ${members}',
             'replacements': {
                 'members': ID.revert(array=members),

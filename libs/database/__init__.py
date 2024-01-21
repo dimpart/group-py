@@ -55,11 +55,9 @@ __all__ = [
     #
     'MetaCache',
     'DocumentCache',
-    'GroupCache',
+    'GroupCache', 'GroupHistoryCache',
 
     'GroupKeysCache',
-    'ResetGroupCache',
-
     'GroupInboxMessageCache',
 
     #

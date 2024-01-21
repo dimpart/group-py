@@ -29,29 +29,16 @@
     File System
 """
 
-from dimples.database.dos import Storage
-from dimples.database.dos import PrivateKeyStorage, MetaStorage, DocumentStorage
-from dimples.database.dos import UserStorage, GroupStorage, ResetGroupStorage
-from dimples.database.dos import GroupKeysStorage
-from dimples.database.dos import LoginStorage
-from dimples.database.dos import StationStorage
+from dimples.database.dos import *
 
 
 __all__ = [
 
     'Storage',
-
-    'PrivateKeyStorage',
-    'MetaStorage',
-    'DocumentStorage',
-
+    'PrivateKeyStorage', 'MetaStorage', 'DocumentStorage',
     'UserStorage',
-    'GroupStorage',
-    'ResetGroupStorage',
-
+    'GroupStorage', 'GroupHistoryStorage',
     'GroupKeysStorage',
-
     'LoginStorage',
-
     'StationStorage',
 ]
