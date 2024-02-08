@@ -32,7 +32,7 @@ title "DIM Group Bot"
 restart group "bots/gbot_assistant.py"
 
 title "DIM Receptionist"
-restart group "bots/gbot_usher.py"
+restart usher "bots/gbot_usher.py"
 
 echo ""
 echo "    >>> Done <<<"

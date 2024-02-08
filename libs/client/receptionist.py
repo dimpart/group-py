@@ -24,49 +24,15 @@
 # ==============================================================================
 
 import threading
-import time
 from typing import Optional, Tuple, List
 
+from dimples import DateTime
 from dimples import ID, ReliableMessage
 from dimples import ForwardContent
 from dimples import CommonMessenger
 
-from ..utils import Singleton, Runner, Logging
+from ..utils import Singleton, Runner, Logging, Footprint
 from ..database import Database
-
-
-@Singleton
-class Footprint:
-
-    EXPIRES = 36000  # vanished after 10 hours
-
-    def __init__(self):
-        super().__init__()
-        self.__active_times = {}  # ID => float
-
-    def __get_time(self, identifier: ID, when: Optional[float]) -> Optional[float]:
-        now = time.time()
-        if when is None or when <= 0 or when >= now:
-            return now
-        elif when > self.__active_times.get(identifier, 0):
-            return when
-        # else:
-        #     # time expired, drop it
-        #     return None
-
-    def touch(self, identifier: ID, when: float = None):
-        when = self.__get_time(identifier=identifier, when=when)
-        if when is not None:
-            self.__active_times[identifier] = when
-            return True
-
-    def is_vanished(self, identifier: ID, now: float = None) -> bool:
-        last_time = self.__active_times.get(identifier)
-        if last_time is None:
-            return True
-        if now is None:
-            now = time.time()
-        return now > (last_time + self.EXPIRES)
 
 
 @Singleton
@@ -176,7 +142,7 @@ class Receptionist(Runner, Logging):
     def messenger(self, transceiver: CommonMessenger):
         self.__distributor.messenger = transceiver
 
-    def touch(self, identifier: ID, when: float = None):
+    def touch(self, identifier: ID, when: DateTime = None):
         fp = self.footprint
         vanished = fp.is_vanished(identifier=identifier)
         touched = fp.touch(identifier=identifier, when=when)

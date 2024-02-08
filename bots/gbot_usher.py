@@ -126,8 +126,22 @@ class ActiveUsersHandler(TwinsHelper, CustomizedContentHandler, Logging):
 class BotTextContentProcessor(BaseContentProcessor, Logging):
     """ Process text content """
 
-    # noinspection PyMethodMayBeStatic
-    def __respond(self, text: str, group: ID):
+    @property
+    def facebook(self) -> CommonFacebook:
+        barrack = super().facebook
+        assert isinstance(barrack, CommonFacebook), 'facebook error: %s' % barrack
+        return barrack
+
+    @classmethod
+    def replace_at(cls, text: str, name: str) -> str:
+        at = '@%s' % name
+        if text.endswith(at):
+            text = text[:-len(at)]
+        at = '@%s ' % name
+        return text.replace(at, '')
+
+    @classmethod
+    def send_text(cls, text: str, group: ID):
         content = TextContent.create(text=text)
         emitter = Emitter()
         emitter.send_content(content=content, receiver=group)
@@ -140,31 +154,40 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
             self.warning(msg='change current group by %s: %s -> %s' % (sender, g_vars.get('group'), group))
             g_vars['group'] = group
             text = 'Current group set to "%s"' % group
-            self.__respond(text=text, group=group)
+            self.send_text(text=text, group=group)
             return True
         else:
             self.warning(msg='permission denied: %s, supervisors: %s' % (sender, admins))
             text = 'permission denied'
-            self.__respond(text=text, group=group)
+            self.send_text(text=text, group=group)
             return False
 
     # Override
     def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
         assert isinstance(content, TextContent), 'text content error: %s' % content
+        text = content.text
+        if text is None:
+            # assert False, 'text content error: %s' % content
+            return []
+        facebook = self.facebook
         group = content.group
         sender = r_msg.sender
         if group is None:
-            self.debug(msg='ignore message from %s' % sender)
+            nickname = facebook.get_name(identifier=sender)
+            self.info(msg='ignore message from %s: "%s"' % (nickname, text))
             return []
         # check text
-        text = content.text
-        if text is None:
+        user = facebook.current_user
+        assert user is not None, 'failed to get current user'
+        nickname = self.facebook.get_name(identifier=user.identifier)
+        assert len(nickname) > 0, 'user name error: %s' % user
+        naked = self.replace_at(text=text, name=nickname)
+        if naked == text:
+            self.debug(msg='ignore message from %s: "%s"' % (nickname, text))
             return []
         else:
-            # TODO: check '@me'
-            pass
-        text = text.strip().lower()
-        if text == 'set current group':
+            naked = naked.strip().lower()
+        if naked == 'set current group':
             self.__set_current_group(group=group, sender=sender)
         return []
 
