@@ -132,6 +132,15 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
         assert isinstance(barrack, CommonFacebook), 'facebook error: %s' % barrack
         return barrack
 
+    def __get_fullname(self, identifier: ID) -> str:
+        facebook = self.facebook
+        doc = facebook.document(identifier=identifier)
+        name = identifier.name if doc is None else doc.name
+        if name is None or len(name) == 0:
+            return str(identifier)
+        else:
+            return '%s (%s)' % (identifier, name)
+
     @classmethod
     def replace_at(cls, text: str, name: str) -> str:
         at = '@%s' % name
@@ -146,14 +155,27 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
         emitter = Emitter()
         emitter.send_content(content=content, receiver=group)
 
+    def __query_current_group(self, group: ID):
+        current = g_vars.get('group')
+        if isinstance(current, ID):
+            name = self.__get_fullname(identifier=current)
+            text = 'Current group is "%s" (%s)' % (name, current)
+            self.send_text(text=text, group=group)
+            return True
+        else:
+            text = 'current group not set yet'
+            self.send_text(text=text, group=group)
+            return False
+
     def __set_current_group(self, group: ID, sender: ID):
         admins = g_vars['supervisors']
         assert isinstance(admins, List), 'supervisors not found: %s' % g_vars
         # check sender
         if sender in admins:
-            self.warning(msg='change current group by %s: %s -> %s' % (sender, g_vars.get('group'), group))
+            name = self.__get_fullname(identifier=group)
+            self.warning(msg='change current group by %s: %s -> %s "%s"' % (sender, g_vars.get('group'), group, name))
             g_vars['group'] = group
-            text = 'Current group set to "%s"' % group
+            text = 'Current group set to "%s" (%s)' % (name, group)
             self.send_text(text=text, group=group)
             return True
         else:
@@ -189,6 +211,8 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
             naked = naked.strip().lower()
         if naked == 'set current group':
             self.__set_current_group(group=group, sender=sender)
+        elif naked == 'current group':
+            self.__query_current_group(group=group)
         return []
 
 
