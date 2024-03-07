@@ -150,38 +150,42 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
         return text.replace(at, '')
 
     @classmethod
-    def send_text(cls, text: str, group: ID):
+    def send_text(cls, text: str, receiver: ID, group: Optional[ID]):
+        if group is not None:
+            receiver = group
         content = TextContent.create(text=text)
         emitter = Emitter()
-        emitter.send_content(content=content, receiver=group)
+        emitter.send_content(content=content, receiver=receiver)
 
-    def __query_current_group(self, group: ID):
+    def __query_current_group(self, group: Optional[ID], sender: ID):
         current = g_vars.get('group')
         if isinstance(current, ID):
             name = self.__get_fullname(identifier=current)
             text = 'Current group is "%s" (%s)' % (name, current)
-            self.send_text(text=text, group=group)
+            self.send_text(text=text, receiver=sender, group=group)
             return True
         else:
             text = 'current group not set yet'
-            self.send_text(text=text, group=group)
+            self.send_text(text=text, receiver=sender, group=group)
             return False
 
-    def __set_current_group(self, group: ID, sender: ID):
+    def __set_current_group(self, group: Optional[ID], sender: ID):
         admins = g_vars['supervisors']
         assert isinstance(admins, List), 'supervisors not found: %s' % g_vars
-        # check sender
-        if sender in admins:
+        if group is None:
+            text = 'Call me in the group'
+            self.send_text(text=text, receiver=sender, group=group)
+        elif sender in admins:
             name = self.__get_fullname(identifier=group)
             self.warning(msg='change current group by %s: %s -> %s "%s"' % (sender, g_vars.get('group'), group, name))
             g_vars['group'] = group
             text = 'Current group set to "%s" (%s)' % (name, group)
-            self.send_text(text=text, group=group)
+            self.send_text(text=text, receiver=sender, group=group)
             return True
         else:
             self.warning(msg='permission denied: %s, supervisors: %s' % (sender, admins))
             text = 'permission denied'
-            self.send_text(text=text, group=group)
+            self.send_text(text=text, receiver=sender, group=group)
             return False
 
     # Override
@@ -194,17 +198,17 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
         facebook = self.facebook
         group = content.group
         sender = r_msg.sender
-        if group is None:
-            nickname = facebook.get_name(identifier=sender)
-            self.info(msg='ignore message from %s: "%s"' % (nickname, text))
-            return []
+        # if group is None:
+        #     nickname = facebook.get_name(identifier=sender)
+        #     self.info(msg='ignore message from %s: "%s"' % (nickname, text))
+        #     return []
         # check text
         user = facebook.current_user
         assert user is not None, 'failed to get current user'
         nickname = self.facebook.get_name(identifier=user.identifier)
         assert len(nickname) > 0, 'user name error: %s' % user
         naked = self.replace_at(text=text, name=nickname)
-        if naked == text:
+        if group is not None and naked == text:
             self.debug(msg='ignore message from %s: "%s"' % (nickname, text))
             return []
         else:
@@ -212,7 +216,10 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
         if naked == 'set current group':
             self.__set_current_group(group=group, sender=sender)
         elif naked == 'current group':
-            self.__query_current_group(group=group)
+            self.__query_current_group(group=group, sender=sender)
+        else:
+            text = 'Unexpected command: "%s"' % naked
+            self.send_text(text=text, receiver=sender, group=group)
         return []
 
 
@@ -271,7 +278,7 @@ class BotMessageProcessor(ClientProcessor):
 Log.LEVEL = Log.DEVELOP
 
 
-DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
+DEFAULT_CONFIG = '/etc/dimg_bots/config.ini'
 
 
 if __name__ == '__main__':
