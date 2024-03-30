@@ -132,14 +132,18 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
         assert isinstance(barrack, CommonFacebook), 'facebook error: %s' % barrack
         return barrack
 
-    def __get_fullname(self, identifier: ID) -> str:
+    def __get_name(self, identifier: ID) -> str:
         facebook = self.facebook
         doc = facebook.document(identifier=identifier)
         name = identifier.name if doc is None else doc.name
         if name is None or len(name) == 0:
             return str(identifier)
         else:
-            return '%s (%s)' % (identifier, name)
+            return name
+
+    def __group_info(self, group: ID) -> str:
+        name = self.__get_name(identifier=group)
+        return '| Name | %s |\n|-------:|:-------|\n|  ID  | %s |' % (name, group)
 
     @classmethod
     def replace_at(cls, text: str, name: str) -> str:
@@ -160,8 +164,7 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
     def __query_current_group(self, group: Optional[ID], sender: ID):
         current = g_vars.get('group')
         if isinstance(current, ID):
-            name = self.__get_fullname(identifier=current)
-            text = 'Current group is "%s" (%s)' % (name, current)
+            text = 'Current group is:\n%s' % self.__group_info(group=current)
             self.send_text(text=text, receiver=sender, group=group)
             return True
         else:
@@ -176,10 +179,14 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
             text = 'Call me in the group'
             self.send_text(text=text, receiver=sender, group=group)
         elif sender in admins:
-            name = self.__get_fullname(identifier=group)
-            self.warning(msg='change current group by %s: %s -> %s "%s"' % (sender, g_vars.get('group'), group, name))
+            old = g_vars.get('group')
+            self.warning(msg='change current group by %s: %s -> %s' % (sender, old, group))
             g_vars['group'] = group
-            text = 'Current group set to "%s" (%s)' % (name, group)
+            text = 'Current group set to:\n%s' % self.__group_info(group=group)
+            if old is not None:
+                assert isinstance(old, ID), 'old group ID error: %s' % old
+                text += '\n'
+                text += 'replacing the old one:\n%s' % self.__group_info(group=old)
             self.send_text(text=text, receiver=sender, group=group)
             return True
         else:
