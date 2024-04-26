@@ -38,6 +38,7 @@ from dimples.database import Storage
 from dimples.client import ClientArchivist, ClientFacebook
 
 from libs.utils import Singleton
+from libs.database.redis import Cache as RedisCache
 from libs.database import Database
 from libs.client import Terminal
 from libs.client import ClientSession, ClientMessenger
@@ -137,6 +138,23 @@ def create_database(config: Config) -> Database:
     for node in neighbors:
         print('adding neighbor node: %s' % node)
         db.add_station(identifier=None, host=node.host, port=node.port, provider=provider)
+    # config redis server
+    redis_enable = config.get_boolean(section='redis', option='enable')
+    if redis_enable:
+        # redis host
+        host = config.get_string(section='redis', option='host')
+        if host is not None and len(host) > 0:
+            RedisCache.set_redis_host(host=host)
+        # redis port
+        port = config.get_integer(section='redis', option='port')
+        if port is not None and port > 0:
+            RedisCache.set_redis_port(port=port)
+        # redis password
+        password = config.get_string(section='redis', option='password')
+        if password is not None and len(password) > 0:
+            RedisCache.set_redis_password(password=password)
+        # enable redis
+        RedisCache.set_redis_enable(enable=True)
     return db
 
 

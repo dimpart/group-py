@@ -52,8 +52,9 @@ sys.path.append(rootPath)
 from libs.utils import Log, Logging
 from libs.utils import Footprint
 
+from libs.client.chat import ChatBoxMixIn, Request
 from libs.client import ClientProcessor, ClientContentProcessorCreator
-from libs.client import Emitter, SharedGroupManager
+from libs.client import SharedGroupManager
 
 from bots.shared import GlobalVariable
 from bots.shared import start_bot
@@ -123,7 +124,7 @@ class ActiveUsersHandler(TwinsHelper, CustomizedContentHandler, Logging):
         return []
 
 
-class BotTextContentProcessor(BaseContentProcessor, Logging):
+class BotTextContentProcessor(BaseContentProcessor, ChatBoxMixIn):
     """ Process text content """
 
     @property
@@ -132,52 +133,34 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
         assert isinstance(barrack, CommonFacebook), 'facebook error: %s' % barrack
         return barrack
 
-    def __get_name(self, identifier: ID) -> str:
-        facebook = self.facebook
-        doc = facebook.document(identifier=identifier)
-        name = identifier.name if doc is None else doc.name
-        if name is None or len(name) == 0:
-            return str(identifier)
-        else:
-            return name
-
+    # build group info
     def __group_info(self, group: ID) -> str:
-        name = self.__get_name(identifier=group)
-        return '| Name | %s |\n|-------:|:-------|\n|  ID  | %s |' % (name, group)
+        facebook = self.facebook
+        doc = facebook.document(identifier=group)
+        name = group.name if doc is None else doc.name
+        # name = md_esc(text=name)
+        return '- Name: ```%s```\n- ID  : %s\n' % (name, group)
+        # return '| Name | %s |\n|-------:|:-------|\n|  ID  | %s |\n' % (name, group)
 
-    @classmethod
-    def replace_at(cls, text: str, name: str) -> str:
-        at = '@%s' % name
-        if text.endswith(at):
-            text = text[:-len(at)]
-        at = '@%s ' % name
-        return text.replace(at, '')
-
-    @classmethod
-    def send_text(cls, text: str, receiver: ID, group: Optional[ID]):
-        if group is not None:
-            receiver = group
-        content = TextContent.create(text=text)
-        emitter = Emitter()
-        emitter.send_content(content=content, receiver=receiver)
-
-    def __query_current_group(self, group: Optional[ID], sender: ID):
+    def __query_current_group(self, request: Request):
         current = g_vars.get('group')
         if isinstance(current, ID):
             text = 'Current group is:\n%s' % self.__group_info(group=current)
-            self.send_text(text=text, receiver=sender, group=group)
+            self.respond_text(text=text, request=request)
             return True
         else:
             text = 'current group not set yet'
-            self.send_text(text=text, receiver=sender, group=group)
+            self.respond_text(text=text, request=request)
             return False
 
-    def __set_current_group(self, group: Optional[ID], sender: ID):
+    def __set_current_group(self, request: Request):
+        sender = request[0].sender
+        group = request[1].group
         admins = g_vars['supervisors']
         assert isinstance(admins, List), 'supervisors not found: %s' % g_vars
         if group is None:
             text = 'Call me in the group'
-            self.send_text(text=text, receiver=sender, group=group)
+            self.respond_text(text=text, request=request)
         elif sender in admins:
             old = g_vars.get('group')
             self.warning(msg='change current group by %s: %s -> %s' % (sender, old, group))
@@ -187,46 +170,33 @@ class BotTextContentProcessor(BaseContentProcessor, Logging):
                 assert isinstance(old, ID), 'old group ID error: %s' % old
                 text += '\n'
                 text += 'replacing the old one:\n%s' % self.__group_info(group=old)
-            self.send_text(text=text, receiver=sender, group=group)
+            self.respond_text(text=text, request=request)
             return True
         else:
             self.warning(msg='permission denied: %s, supervisors: %s' % (sender, admins))
             text = 'permission denied'
-            self.send_text(text=text, receiver=sender, group=group)
+            self.respond_text(text=text, request=request)
             return False
 
     # Override
     def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
         assert isinstance(content, TextContent), 'text content error: %s' % content
-        text = content.text
-        if text is None:
-            # assert False, 'text content error: %s' % content
-            return []
-        facebook = self.facebook
-        group = content.group
-        sender = r_msg.sender
-        # if group is None:
-        #     nickname = facebook.get_name(identifier=sender)
-        #     self.info(msg='ignore message from %s: "%s"' % (nickname, text))
-        #     return []
-        # check text
-        user = facebook.current_user
-        assert user is not None, 'failed to get current user'
-        nickname = self.facebook.get_name(identifier=user.identifier)
-        assert len(nickname) > 0, 'user name error: %s' % user
-        naked = self.replace_at(text=text, name=nickname)
-        if group is not None and naked == text:
-            self.debug(msg='ignore message from %s: "%s"' % (nickname, text))
+        # get text
+        naked = self._fetch_text(content=content, envelope=r_msg.envelope)
+        if naked is None:
+            self.debug(msg='ignore message from %s: "%s"' % (r_msg.sender, content))
             return []
         else:
             naked = naked.strip().lower()
+            request = (r_msg.envelope, content)
+        # group commands
         if naked == 'set current group':
-            self.__set_current_group(group=group, sender=sender)
+            self.__set_current_group(request=request)
         elif naked == 'current group':
-            self.__query_current_group(group=group, sender=sender)
+            self.__query_current_group(request=request)
         else:
             text = 'Unexpected command: "%s"' % naked
-            self.send_text(text=text, receiver=sender, group=group)
+            self.respond_text(text=text, request=request)
         return []
 
 

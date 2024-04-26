@@ -82,6 +82,30 @@ class Footprint:
         return now > (last_time + self.EXPIRES)
 
 
+def md_esc(text: str) -> str:
+    if text is None:
+        return ''
+    elif not isinstance(text, str):
+        text = str(text)
+    escape = ''
+    for c in text:
+        if c in _md_chars:
+            escape += '\\'
+        escape += c
+    return escape
+
+
+_md_chars = {
+    '\\',
+    '#', '*', '_', '-', '+',
+    '~', '`',
+    '|', ':', '!', '.',
+    '[', ']', '(', ')',
+    '<', '>', '{', '}',
+    '"', "'",
+}
+
+
 __all__ = [
 
     'md5', 'sha1', 'sha256', 'keccak256', 'ripemd160',
@@ -119,6 +143,11 @@ __all__ = [
     'get_cache_name',
     'filename_from_url', 'filename_from_data',
 
+    #
+    #   Others
+    #
     'Footprint',
+
+    'md_esc',
 
 ]
