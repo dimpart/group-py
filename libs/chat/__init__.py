@@ -2,7 +2,7 @@
 # ==============================================================================
 # MIT License
 #
-# Copyright (c) 2019 Albert Moky
+# Copyright (c) 2024 Albert Moky
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,41 +23,24 @@
 # SOFTWARE.
 # ==============================================================================
 
-"""
-    Client Module
-    ~~~~~~~~~~~~~
+from .base import Request
+from .base import Setting, Greeting, ChatRequest
 
-"""
+from .box import ChatBox
 
-from dimples.client import Terminal
-from dimples.client import ClientSession, SessionState
-from dimples.client import ClientContentProcessorCreator
-from dimples.client import ClientMessenger
+from .client import ChatClient
 
-from .packer import ClientPacker
-from .processor import ClientProcessor
-from .emitter import Emitter
-
-from .group import SharedGroupManager
-
-from .receptionist import Receptionist
+from .storage import ChatStorage
 
 
 __all__ = [
 
-    #
-    #   Client
-    #
-    'Terminal',
-    'ClientSession', 'SessionState',
-    'ClientContentProcessorCreator',
-    'ClientMessenger',
-    'ClientProcessor',
-    'ClientPacker',
-    'Emitter',
+    'Request',
+    'Setting', 'Greeting', 'ChatRequest',
 
-    'SharedGroupManager',
+    'ChatBox',
+    'ChatClient',
 
-    'Receptionist',
+    'ChatStorage',
 
 ]

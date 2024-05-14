@@ -31,7 +31,8 @@ from dimples import ID, ReliableMessage
 from dimples import ForwardContent
 from dimples import CommonMessenger
 
-from ..utils import Singleton, Runner, Logging, Footprint
+from ..utils import Singleton, Logging, Footprint
+from ..utils import Runner, DaemonRunner
 from ..database import Database
 
 
@@ -63,18 +64,18 @@ class Distributor:
     def messenger(self, transceiver: CommonMessenger):
         self.__messenger = transceiver
 
-    def forward_message(self, msg: ReliableMessage, receiver: ID):
+    async def forward_message(self, msg: ReliableMessage, receiver: ID):
         content = ForwardContent.create(message=msg)
-        self.messenger.send_content(sender=None, receiver=receiver, content=content, priority=1)
+        return await self.messenger.send_content(sender=None, receiver=receiver, content=content, priority=1)
 
-    def __deliver(self, msg: ReliableMessage, receiver: ID):
+    async def __deliver(self, msg: ReliableMessage, receiver: ID):
         if self.footprint.is_vanished(identifier=receiver):
             # the receiver isn't present recently, store this message to inbox
-            self.database.inbox_cache_reliable_message(msg=msg, receiver=receiver)
+            return await self.database.inbox_cache_reliable_message(msg=msg, receiver=receiver)
         else:
-            self.forward_message(msg=msg, receiver=receiver)
+            return await self.forward_message(msg=msg, receiver=receiver)
 
-    def deliver(self, msg: ReliableMessage, group: ID, recipients: List[ID]) -> Tuple[List[ID], List[ID]]:
+    async def deliver(self, msg: ReliableMessage, group: ID, recipients: List[ID]) -> Tuple[List[ID], List[ID]]:
         db = self.database
         # 0. check receiver
         receiver = msg.receiver
@@ -82,14 +83,14 @@ class Distributor:
             # broadcast message has no encrypted key, so
             # just deliver it directly here.
             for item in recipients:
-                self.__deliver(msg=msg, receiver=item)
+                await self.__deliver(msg=msg, receiver=item)
             return recipients, []
         # 1. check keys for encrypted message
         sender = msg.sender
         keys = msg.encrypted_keys
         if keys is not None:
-            db.save_group_keys(group=group, sender=sender, keys=keys)
-        keys = db.group_keys(group=group, sender=sender)
+            await db.save_group_keys(group=group, sender=sender, keys=keys)
+        keys = await db.get_group_keys(group=group, sender=sender)
         if keys is None:
             # keys not found, cannot deliver message
             return [], recipients
@@ -111,14 +112,14 @@ class Distributor:
             if r_msg is None:
                 # should not happen
                 continue
-            self.__deliver(msg=r_msg, receiver=item)
+            await self.__deliver(msg=r_msg, receiver=item)
             success.append(item)
         # OK
         return success, missing
 
 
 @Singleton
-class Receptionist(Runner, Logging):
+class Receptionist(DaemonRunner, Logging):
 
     def __init__(self):
         super().__init__(interval=Runner.INTERVAL_SLOW)
@@ -156,7 +157,7 @@ class Receptionist(Runner, Logging):
                 return self.__users.pop(0)
 
     # Override
-    def process(self) -> bool:
+    async def process(self) -> bool:
         user = self.next_user()
         if user is None:
             # nothing to do now, return false to have a rest
@@ -164,14 +165,10 @@ class Receptionist(Runner, Logging):
         distributor = self.__distributor
         db = distributor.database
         try:
-            messages = db.inbox_reliable_messages(receiver=user)
+            messages = await db.inbox_reliable_messages(receiver=user)
             self.info(msg='forwarding %d message(s) for user: %s' % (len(messages), user))
             for msg in messages:
-                distributor.forward_message(msg=msg, receiver=user)
+                await distributor.forward_message(msg=msg, receiver=user)
         except Exception as error:
             self.error(msg='failed to forward message: %s' % error)
             return False
-
-    def start(self):
-        thread = threading.Thread(target=self.run, daemon=True)
-        thread.start()

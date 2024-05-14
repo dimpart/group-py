@@ -25,21 +25,22 @@
 
 import getopt
 import sys
-import threading
+import time
 from typing import Optional
 
 from dimples import ID
 from dimples import Station
 from dimples import CommonFacebook
 from dimples import AccountDBI, MessageDBI, SessionDBI
-from dimples.utils import Config
 from dimples.common import ProviderInfo
-from dimples.database import Storage
 from dimples.client import ClientArchivist, ClientFacebook
 
-from libs.utils import Singleton
+from libs.utils import Singleton, Config, Path
 from libs.database.redis import Cache as RedisCache
 from libs.database import Database
+
+from libs.chat import ChatStorage
+
 from libs.client import Terminal
 from libs.client import ClientSession, ClientMessenger
 from libs.client import ClientProcessor, ClientPacker
@@ -95,7 +96,7 @@ def create_config(app_name: str, default_config: str) -> Config:
     # check config filepath
     if ini_file is None:
         ini_file = default_config
-    if not Storage.exists(path=ini_file):
+    if not Path.exists(path=ini_file):
         show_help(cmd=cmd, app_name=app_name, default_config=default_config)
         print('')
         print('!!! config file not exists: %s' % ini_file)
@@ -123,7 +124,7 @@ def create_config(app_name: str, default_config: str) -> Config:
     return config
 
 
-def create_database(config: Config) -> Database:
+async def create_database(config: Config) -> Database:
     """ Step 2: create database """
     root = config.database_root
     public = config.database_public
@@ -137,7 +138,7 @@ def create_database(config: Config) -> Database:
     neighbors = config.neighbors
     for node in neighbors:
         print('adding neighbor node: %s' % node)
-        db.add_station(identifier=None, host=node.host, port=node.port, provider=provider)
+        await db.add_station(identifier=None, host=node.host, port=node.port, provider=provider)
     # config redis server
     redis_enable = config.get_boolean(section='redis', option='enable')
     if redis_enable:
@@ -158,7 +159,7 @@ def create_database(config: Config) -> Database:
     return db
 
 
-def create_facebook(database: AccountDBI, current_user: ID) -> CommonFacebook:
+async def create_facebook(database: AccountDBI, current_user: ID) -> CommonFacebook:
     """ Step 3: create facebook """
     facebook = ClientFacebook()
     # create archivist for facebook
@@ -166,15 +167,27 @@ def create_facebook(database: AccountDBI, current_user: ID) -> CommonFacebook:
     archivist.facebook = facebook
     facebook.archivist = archivist
     # make sure private key exists
-    sign_key = facebook.private_key_for_visa_signature(identifier=current_user)
-    msg_keys = facebook.private_keys_for_decryption(identifier=current_user)
+    sign_key = await facebook.private_key_for_visa_signature(identifier=current_user)
+    msg_keys = await facebook.private_keys_for_decryption(identifier=current_user)
     assert sign_key is not None, 'failed to get sign key for current user: %s' % current_user
     assert msg_keys is not None and len(msg_keys) > 0, 'failed to get msg keys: %s' % current_user
     print('set current user: %s' % current_user)
-    facebook.current_user = facebook.user(identifier=current_user)
+    user = await facebook.get_user(identifier=current_user)
+    assert user is not None, 'failed to get current user: %s' % current_user
+    visa = await user.visa
+    if visa is not None:
+        # refresh visa
+        now = time.time()
+        visa.set_property(key='time', value=now)
+        visa.sign(private_key=sign_key)
+        await facebook.save_document(document=visa)
+    facebook.current_user = user
     # set for group manager
     g_man = SharedGroupManager()
     g_man.facebook = facebook
+    # config chat storage
+    cs = ChatStorage()
+    cs.bot = current_user
     return facebook
 
 
@@ -207,6 +220,13 @@ def create_messenger(facebook: CommonFacebook, database: MessageDBI,
     return messenger
 
 
+async def create_terminal(messenger: ClientMessenger) -> Terminal:
+    terminal = Terminal(messenger=messenger)
+    messenger.terminal = terminal
+    await terminal.start()
+    return terminal
+
+
 #
 #   DIM Bot
 #
@@ -229,7 +249,7 @@ def check_bot_id(config: Config, ans_name: str) -> bool:
     return True
 
 
-def start_bot(default_config: str, app_name: str, ans_name: str, processor_class) -> Terminal:
+async def start_bot(default_config: str, app_name: str, ans_name: str, processor_class) -> Terminal:
     # create global variable
     shared = GlobalVariable()
     # Step 1: load config
@@ -238,14 +258,14 @@ def start_bot(default_config: str, app_name: str, ans_name: str, processor_class
     if not check_bot_id(config=config, ans_name=ans_name):
         raise LookupError('Failed to get Bot ID: %s' % config)
     # Step 2: create database
-    db = create_database(config=config)
+    db = await create_database(config=config)
     shared.adb = db
     shared.mdb = db
     shared.sdb = db
     shared.database = db
     # Step 3: create facebook
     bid = config.get_identifier(section='bot', option='id')
-    facebook = create_facebook(database=db, current_user=bid)
+    facebook = await create_facebook(database=db, current_user=bid)
     shared.facebook = facebook
     # create session for messenger
     host = config.station_host
@@ -257,7 +277,4 @@ def start_bot(default_config: str, app_name: str, ans_name: str, processor_class
     emitter = Emitter()
     emitter.messenger = messenger
     # create & start terminal
-    terminal = Terminal(messenger=messenger)
-    thread = threading.Thread(target=terminal.run, daemon=False)
-    thread.start()
-    return terminal
+    return await create_terminal(messenger=messenger)

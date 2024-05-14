@@ -36,6 +36,7 @@
 from typing import Optional
 
 from startrek.fsm import Runnable, Runner
+from startrek.fsm import Daemon, DaemonRunner
 
 from dimples import *
 from dimples.utils import *
@@ -119,6 +120,7 @@ __all__ = [
     'Converter',
 
     'Runnable', 'Runner',
+    'Daemon', 'DaemonRunner',
 
     'Singleton',
     'Log', 'Logging',

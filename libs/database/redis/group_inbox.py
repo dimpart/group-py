@@ -60,7 +60,7 @@ class GroupInboxMessageCache(Cache):
     def __messages_cache_name(self, identifier: ID) -> str:
         return '%s.%s.%s.messages' % (self.db_name, self.tbl_name, identifier)
 
-    def save_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
+    async def save_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
         sig = get_msg_sig(msg=msg)  # last 6 bytes (signature in base64)
         # 1. save message: 'dkd.msg.{RECEIVER}.{SIG}
         msg_key = self.__msg_cache_name(identifier=receiver, sig=sig)
@@ -72,7 +72,7 @@ class GroupInboxMessageCache(Cache):
         self.zadd(name=messages_key, mapping={sig: msg.time})
         return True
 
-    def remove_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
+    async def remove_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
         sig = get_msg_sig(msg=msg)  # last 6 bytes (signature in base64)
         # 1. delete message: 'dkd.msg.{RECEIVER}.{SIG}
         msg_key = self.__msg_cache_name(identifier=receiver, sig=sig)
@@ -82,7 +82,7 @@ class GroupInboxMessageCache(Cache):
         self.zrem(messages_key, utf8_encode(string=sig))
         return True
 
-    def reliable_messages(self, receiver: ID, limit: int = 1024) -> List[ReliableMessage]:
+    async def get_reliable_messages(self, receiver: ID, limit: int = 1024) -> List[ReliableMessage]:
         assert limit > 0, 'message limit error: %d' % limit
         # 0. clear expired messages (7 days ago)
         key = self.__messages_cache_name(identifier=receiver)

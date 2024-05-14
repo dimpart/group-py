@@ -57,7 +57,7 @@ class ForwardContentProcessor(BaseContentProcessor):
         return transceiver
 
     # Override
-    def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
+    async def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
         assert isinstance(content, ForwardContent), 'forward content error: %s' % content
         secrets = content.secrets
         messenger = self.messenger
@@ -72,9 +72,9 @@ class ForwardContentProcessor(BaseContentProcessor):
             elif receiver.is_broadcast and group is not None:
                 # group command
                 assert not group.is_broadcast, 'message error: %s => %s (%s)' % (item.sender, receiver, group)
-                results = self.__process_group_command(group=group, content=content, msg=item)
+                results = await self.__process_group_command(group=group, content=content, msg=item)
             else:
-                responses = messenger.process_reliable_message(msg=item)
+                responses = await messenger.process_reliable_message(msg=item)
                 results = forward_messages(messages=responses)
             # NOTICE: append one result for each forwarded message here.
             #         if result is more than one content, append an array content;
@@ -85,10 +85,10 @@ class ForwardContentProcessor(BaseContentProcessor):
                 array.append(ArrayContent.create(contents=results))
         return array
 
-    def __split_group_message(self, group: ID, content: Content, msg: ReliableMessage) -> List[Content]:
+    async def __split_group_message(self, group: ID, content: Content, msg: ReliableMessage) -> List[Content]:
         facebook = self.facebook
         # 1. check members
-        members = facebook.members(identifier=group)
+        members = await facebook.get_members(identifier=group)
         sender = msg.sender
         if sender not in members:
             return self._respond_receipt(text='Permission denied.', content=content, envelope=msg.envelope, extra={
@@ -100,13 +100,13 @@ class ForwardContentProcessor(BaseContentProcessor):
         recipients = members.copy()
         # 2. deliver group message for each members
         recipients.remove(sender)
-        return self.__distribute_group_message(recipients=recipients, group=group, content=content, msg=msg)
+        return await self.__distribute_group_message(recipients=recipients, group=group, content=content, msg=msg)
 
-    def __process_group_command(self, group: ID, content: Content, msg: ReliableMessage) -> List[Content]:
+    async def __process_group_command(self, group: ID, content: Content, msg: ReliableMessage) -> List[Content]:
         facebook = self.facebook
         messenger = self.messenger
         # 1. get members before
-        members = facebook.members(identifier=group)
+        members = await facebook.get_members(identifier=group)
         sender = msg.sender
         if sender not in members:
             text = 'Permission denied.'
@@ -118,25 +118,25 @@ class ForwardContentProcessor(BaseContentProcessor):
             })
         recipients = members.copy()
         # 2. process message
-        responses = messenger.process_reliable_message(msg=msg)
+        responses = await messenger.process_reliable_message(msg=msg)
         # 3. get members after
-        members = facebook.members(identifier=group)
+        members = await facebook.get_members(identifier=group)
         for item in members:
             if item not in recipients:
                 recipients.append(item)
         # 4. deliver group message for each members
         recipients.remove(sender)
-        array = self.__distribute_group_message(recipients=recipients, group=group, content=content, msg=msg)
+        array = await self.__distribute_group_message(recipients=recipients, group=group, content=content, msg=msg)
         # 5. merge responses
         results = forward_messages(messages=responses)
         for item in array:
             results.append(item)
         return results
 
-    def __distribute_group_message(self, recipients: List[ID], group: ID,
-                                   content: Content, msg: ReliableMessage) -> List[Content]:
+    async def __distribute_group_message(self, recipients: List[ID], group: ID,
+                                         content: Content, msg: ReliableMessage) -> List[Content]:
         distributor = get_distributor(messenger=self.messenger)
-        members, missing = distributor.deliver(msg=msg, group=group, recipients=recipients)
+        members, missing = await distributor.deliver(msg=msg, group=group, recipients=recipients)
         # OK
         text = 'Group messages are distributing.'
         return self._respond_receipt(text=text, content=content, envelope=msg.envelope, extra={

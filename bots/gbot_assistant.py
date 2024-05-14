@@ -35,18 +35,20 @@ import sys
 import os
 from typing import Optional, Union, List
 
-from dimples import EntityType
 from dimples import ReliableMessage
 from dimples import ContentType, Content
 from dimples import ContentProcessor, ContentProcessorCreator
-from dimples.utils import Log
+
+from dimples.client import ClientMessageProcessor
 
 curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 
+from libs.utils import Log, Runner
+
 from libs.client.cpu import ForwardContentProcessor
-from libs.client import ClientProcessor, ClientContentProcessorCreator
+from libs.client import ClientContentProcessorCreator
 from libs.client import Receptionist
 
 from bots.shared import start_bot
@@ -63,12 +65,12 @@ class AssistantContentProcessorCreator(ClientContentProcessorCreator):
         return super().create_content_processor(msg_type=msg_type)
 
 
-class AssistantProcessor(ClientProcessor):
+class AssistantProcessor(ClientMessageProcessor):
 
     # Override
-    def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
+    async def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
         g_receptionist.touch(identifier=r_msg.sender, when=content.time)
-        return super().process_content(content=content, r_msg=r_msg)
+        return await super().process_content(content=content, r_msg=r_msg)
 
     # Override
     def _create_creator(self) -> ContentProcessorCreator:
@@ -84,17 +86,25 @@ Log.LEVEL = Log.DEVELOP
 DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
 
 
-if __name__ == '__main__':
-    terminal = start_bot(default_config=DEFAULT_CONFIG,
-                         app_name='DIM Group Assistant',
-                         ans_name='assistant',
-                         processor_class=AssistantProcessor)
-    messenger = terminal.messenger
-    facebook = messenger.facebook
-    current_user = facebook.current_user
-    bot_id = current_user.identifier
-    assert bot_id.type == EntityType.BOT, 'bot ID error: %s' % current_user
+g_receptionist = Receptionist()
+
+
+async def main():
+    # create & start bot
+    client = await start_bot(default_config=DEFAULT_CONFIG,
+                             app_name='DIM Group Assistant',
+                             ans_name='assistant',
+                             processor_class=AssistantProcessor)
     # start receptionist
-    g_receptionist = Receptionist()
-    g_receptionist.messenger = messenger
-    g_receptionist.start()
+    g_receptionist.messenger = client.messenger
+    await g_receptionist.start()
+    # main run loop
+    while True:
+        await Runner.sleep(seconds=1.0)
+        if not client.running:
+            break
+    Log.warning(msg='bot stopped: %s' % client)
+
+
+if __name__ == '__main__':
+    Runner.sync_run(main=main())
