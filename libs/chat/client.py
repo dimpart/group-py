@@ -32,13 +32,13 @@ from dimples import DateTime
 from dimples import ID
 
 from ..utils import Logging
-from ..utils import Runner, DaemonRunner
+from ..utils import Runner
 
 from .base import Request
 from .box import ChatBox
 
 
-class ChatClient(DaemonRunner, Logging, ABC):
+class ChatClient(Runner, Logging, ABC):
     """ Chat Boxes Pool """
 
     def __init__(self):

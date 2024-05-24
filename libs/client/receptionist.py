@@ -32,7 +32,7 @@ from dimples import ForwardContent
 from dimples import CommonMessenger
 
 from ..utils import Singleton, Logging, Footprint
-from ..utils import Runner, DaemonRunner
+from ..utils import Runner, Daemon
 from ..database import Database
 
 
@@ -119,7 +119,7 @@ class Distributor:
 
 
 @Singleton
-class Receptionist(DaemonRunner, Logging):
+class Receptionist(Runner, Logging):
 
     def __init__(self):
         super().__init__(interval=Runner.INTERVAL_SLOW)

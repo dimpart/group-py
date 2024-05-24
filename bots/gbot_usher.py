@@ -165,7 +165,8 @@ class BotMessageProcessor(ClientProcessor):
     # Override
     def _create_chat_client(self) -> ChatClient:
         client = GroupChatClient(facebook=self.facebook)
-        Runner.async_run(coroutine=client.start())
+        # Runner.async_task(coro=client.start())
+        Runner.thread_run(runner=client)
         return client
 
 
@@ -176,6 +177,9 @@ Log.LEVEL = Log.DEVELOP
 
 
 DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
+
+
+ChatBox.EXPIRES = 36000  # vanished after 10 hours
 
 
 async def main():
