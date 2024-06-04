@@ -32,7 +32,7 @@ from dimples import ForwardContent
 from dimples import CommonMessenger
 
 from ..utils import Singleton, Logging, Footprint
-from ..utils import Runner, Daemon
+from ..utils import Runner
 from ..database import Database
 
 

@@ -89,7 +89,7 @@ DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
 g_receptionist = Receptionist()
 
 
-async def main():
+async def async_main():
     # create & start bot
     client = await start_bot(default_config=DEFAULT_CONFIG,
                              app_name='DIM Group Assistant',
@@ -106,5 +106,9 @@ async def main():
     Log.warning(msg='bot stopped: %s' % client)
 
 
+def main():
+    Runner.sync_run(main=async_main())
+
+
 if __name__ == '__main__':
-    Runner.sync_run(main=main())
+    main()
