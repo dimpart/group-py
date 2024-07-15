@@ -104,7 +104,7 @@ class GroupChatBox(ChatBox):
             return True
         else:
             self.warning(msg='permission denied: %s, supervisors: %s' % (sender, admins))
-            text = 'permission denied'
+            text = 'Permission denied.'
             await self.respond_text(text=text, request=request)
             return False
 
@@ -194,10 +194,9 @@ async def async_main():
     if isinstance(supervisors, List):
         g_vars['supervisors'] = ID.convert(array=supervisors)
     # main run loop
-    while True:
-        await Runner.sleep(seconds=1.0)
-        if not client.running:
-            break
+    await client.start()
+    await client.run()
+    # await client.stop()
     Log.warning(msg='bot stopped: %s' % client)
 
 

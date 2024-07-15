@@ -35,9 +35,6 @@
 
 from typing import Optional
 
-from startrek.skywalker import Runnable, Runner
-from startrek.skywalker import Daemon
-
 from dimples import *
 from dimples.utils import *
 
@@ -123,11 +120,10 @@ __all__ = [
     'Daemon',
 
     'Singleton',
-    'Log', 'Logging',
     'Path', 'File', 'TextFile', 'JSONFile',
-    'CachePool', 'CacheHolder', 'CacheManager',
     'FrequencyChecker', 'RecentTimeChecker',
 
+    'Log', 'Logging',
     'Config',
 
     'is_before',

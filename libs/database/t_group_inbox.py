@@ -23,34 +23,74 @@
 # SOFTWARE.
 # ==============================================================================
 
-from typing import List
+import threading
+from typing import List, Optional
 
-from dimples import DateTime
 from dimples import ID
 from dimples import ReliableMessage
 from dimples import ReliableMessageDBI
-
-from dimples.utils import CacheManager
+from dimples.utils import SharedCacheManager
+from dimples.utils import CachePool
+from dimples.database import DbInfo, DbTask
 
 from .redis import GroupInboxMessageCache
+
+
+class MsgTask(DbTask):
+
+    MEM_CACHE_EXPIRES = 360  # seconds
+    MEM_CACHE_REFRESH = 128  # seconds
+
+    def __init__(self, receiver: ID, limit: int,
+                 cache_pool: CachePool, redis: GroupInboxMessageCache,
+                 mutex_lock: threading.Lock):
+        super().__init__(cache_pool=cache_pool,
+                         cache_expires=self.MEM_CACHE_EXPIRES,
+                         cache_refresh=self.MEM_CACHE_REFRESH,
+                         mutex_lock=mutex_lock)
+        self._receiver = receiver
+        self._limit = limit
+        self._redis = redis
+
+    # Override
+    def cache_key(self) -> ID:
+        return self._receiver
+
+    # Override
+    async def _load_redis_cache(self) -> Optional[List[ReliableMessage]]:
+        return await self._redis.get_reliable_messages(receiver=self._receiver, limit=self._limit)
+
+    # Override
+    async def _save_redis_cache(self, value: List[ReliableMessage]) -> bool:
+        pass
+
+    # Override
+    async def _load_local_storage(self) -> Optional[List[ReliableMessage]]:
+        pass
+
+    # Override
+    async def _save_local_storage(self, value: List[ReliableMessage]) -> bool:
+        pass
 
 
 class GroupInboxMessageTable(ReliableMessageDBI):
     """ Implementations of ReliableMessageDBI """
 
-    CACHE_EXPIRES = 360     # seconds
-    CACHE_REFRESHING = 128  # seconds
-
-    # noinspection PyUnusedLocal
-    def __init__(self, root: str = None, public: str = None, private: str = None):
+    def __init__(self, info: DbInfo):
         super().__init__()
-        self.__redis = GroupInboxMessageCache()
-        man = CacheManager()
-        self.__cache = man.get_pool(name='group_inbox')  # ID => List[ReliableMessages]
+        man = SharedCacheManager()
+        self._cache = man.get_pool(name='group_inbox')  # ID => List[ReliableMessages]
+        self._redis = GroupInboxMessageCache(connector=info.redis_connector)
+        self._lock = threading.Lock()
 
     # noinspection PyMethodMayBeStatic
     def show_info(self):
         print('!!! messages cached in memory only !!!')
+
+    def _new_task(self, receiver: ID, limit: int) -> MsgTask:
+        return MsgTask(receiver=receiver, limit=limit,
+                       cache_pool=self._cache, redis=self._redis,
+                       mutex_lock=self._lock)
 
     #
     #   ReliableMessageDBI
@@ -58,39 +98,24 @@ class GroupInboxMessageTable(ReliableMessageDBI):
 
     # Override
     async def get_reliable_messages(self, receiver: ID, limit: int = 1024) -> List[ReliableMessage]:
-        now = DateTime.now()
-        # 1. check memory cache
-        value, holder = self.__cache.fetch(key=receiver, now=now)
-        if value is None:
-            # cache empty
-            if holder is None:
-                # cache not load yet, wait to load
-                self.__cache.update(key=receiver, life_span=self.CACHE_REFRESHING, now=now)
-            else:
-                if holder.is_alive(now=now):
-                    # cache not exists
-                    return []
-                # cache expired, wait to reload
-                holder.renewal(duration=self.CACHE_REFRESHING, now=now)
-            # 2. check redis server
-            value = await self.__redis.get_reliable_messages(receiver=receiver, limit=limit)
-            # 3. update memory cache
-            self.__cache.update(key=receiver, value=value, life_span=self.CACHE_EXPIRES, now=now)
-        # OK, return cached value
-        return value
+        task = self._new_task(receiver=receiver, limit=limit)
+        messages = await task.load()
+        return [] if messages is None else messages
 
     # Override
     async def cache_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
-        # 1. store into redis server
-        if await self.__redis.save_reliable_message(msg=msg, receiver=receiver):
-            # 2. clear cache to reload
-            self.__cache.erase(key=receiver)
-            return True
+        with self._lock:
+            # 1. store into redis server
+            if await self._redis.save_reliable_message(msg=msg, receiver=receiver):
+                # 2. clear cache to reload
+                self._cache.erase(key=receiver)
+                return True
 
     # Override
     async def remove_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
-        # 1. remove from redis server
-        if await self.__redis.remove_reliable_message(msg=msg, receiver=receiver):
-            # 2. clear cache to reload
-            self.__cache.erase(key=receiver)
-            return True
+        with self._lock:
+            # 1. remove from redis server
+            if await self._redis.remove_reliable_message(msg=msg, receiver=receiver):
+                # 2. clear cache to reload
+                self._cache.erase(key=receiver)
+                return True

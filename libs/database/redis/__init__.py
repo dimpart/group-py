@@ -29,27 +29,18 @@
     Redis Client
 """
 
-from .base import RedisConnector
-from .base import Cache
+from dimples.database.redis import *
 
-from .meta import MetaCache
-from .document import DocumentCache
-from .group import GroupCache
-from .grp_history import GroupHistoryCache
-
-from .group_keys import GroupKeysCache
 from .group_inbox import GroupInboxMessageCache
 
 
 __all__ = [
 
-    'RedisConnector',
-    'Cache',
+    'RedisConnector', 'RedisCache',
 
-    'MetaCache',
-    'DocumentCache',
-    'GroupCache', 'GroupHistoryCache',
+    'MetaCache', 'DocumentCache',
+    'GroupCache', 'GroupHistoryCache', 'GroupKeysCache',
 
-    'GroupKeysCache',
     'GroupInboxMessageCache',
+
 ]
