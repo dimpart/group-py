@@ -23,29 +23,43 @@
 # SOFTWARE.
 # ==============================================================================
 
-"""
-    Content Processing Unites
-    ~~~~~~~~~~~~~~~~~~~~~~~~~
+from typing import Optional
 
-    Processors for Contents
-"""
+from dimples import DateTime
+from dimples import ID
 
-from dimples.client.cpu import *
-
-from .forward import ForwardContentProcessor
+from libs.utils import Singleton
 
 
-__all__ = [
+@Singleton
+class Footprint:
 
-    'HandshakeCommandProcessor',
-    'LoginCommandProcessor',
+    EXPIRES = 36000  # vanished after 10 hours
 
-    'HistoryCommandProcessor',
-    'GroupCommandProcessor',
-    'InviteCommandProcessor', 'ExpelCommandProcessor',
-    'JoinCommandProcessor', 'QuitCommandProcessor',
-    'ResetCommandProcessor', 'QueryCommandProcessor',
-    'ResignCommandProcessor',
+    def __init__(self):
+        super().__init__()
+        self.__active_times = {}  # ID => DateTime
 
-    'ForwardContentProcessor',
-]
+    def __get_time(self, identifier: ID, when: Optional[DateTime]) -> Optional[DateTime]:
+        now = DateTime.now()
+        if when is None or when <= 0 or when >= now:
+            return now
+        elif when > self.__active_times.get(identifier, 0):
+            return when
+        # else:
+        #     # time expired, drop it
+        #     return None
+
+    def touch(self, identifier: ID, when: DateTime = None):
+        when = self.__get_time(identifier=identifier, when=when)
+        if when is not None:
+            self.__active_times[identifier] = when
+            return True
+
+    def is_vanished(self, identifier: ID, now: DateTime = None) -> bool:
+        last_time = self.__active_times.get(identifier)
+        if last_time is None:
+            return True
+        if now is None:
+            now = DateTime.now()
+        return now > (last_time + self.EXPIRES)

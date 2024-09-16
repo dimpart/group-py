@@ -31,9 +31,11 @@ from dimples import ID, ReliableMessage
 from dimples import ForwardContent
 from dimples import CommonMessenger
 
-from ..utils import Singleton, Logging, Footprint
-from ..utils import Runner
-from ..database import Database
+from libs.utils import Singleton, Logging
+from libs.utils import Runner
+from libs.database import Database
+
+from .footprint import Footprint
 
 
 @Singleton

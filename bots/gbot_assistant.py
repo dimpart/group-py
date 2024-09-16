@@ -46,10 +46,10 @@ rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 
 from libs.utils import Log, Runner
-
-from libs.client.cpu import ForwardContentProcessor
 from libs.client import ClientContentProcessorCreator
-from libs.client import Receptionist
+
+from engine import ForwardContentProcessor
+from engine import Receptionist
 
 from bots.shared import start_bot
 

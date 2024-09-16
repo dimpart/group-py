@@ -33,9 +33,6 @@
                                              -- Albert Moky @ Jan. 23, 2019
 """
 
-from typing import Optional
-
-from dimples import *
 from dimples.utils import *
 
 from dimples.group.manager import find
@@ -44,40 +41,6 @@ from dimples.database.dos.document import parse_document
 from .pnf import get_filename, get_extension
 from .pnf import get_cache_name
 from .pnf import filename_from_url, filename_from_data
-
-
-@Singleton
-class Footprint:
-
-    EXPIRES = 36000  # vanished after 10 hours
-
-    def __init__(self):
-        super().__init__()
-        self.__active_times = {}  # ID => DateTime
-
-    def __get_time(self, identifier: ID, when: Optional[DateTime]) -> Optional[DateTime]:
-        now = DateTime.now()
-        if when is None or when <= 0 or when >= now:
-            return now
-        elif when > self.__active_times.get(identifier, 0):
-            return when
-        # else:
-        #     # time expired, drop it
-        #     return None
-
-    def touch(self, identifier: ID, when: DateTime = None):
-        when = self.__get_time(identifier=identifier, when=when)
-        if when is not None:
-            self.__active_times[identifier] = when
-            return True
-
-    def is_vanished(self, identifier: ID, now: DateTime = None) -> bool:
-        last_time = self.__active_times.get(identifier)
-        if last_time is None:
-            return True
-        if now is None:
-            now = DateTime.now()
-        return now > (last_time + self.EXPIRES)
 
 
 def md_esc(text: str) -> str:
@@ -144,8 +107,6 @@ __all__ = [
     #
     #   Others
     #
-    'Footprint',
-
     'md_esc',
 
 ]

@@ -40,8 +40,6 @@ from libs.database.redis import RedisConnector
 from libs.database import DbInfo
 from libs.database import Database
 
-from libs.chat import ChatStorage
-
 from libs.client import Terminal
 from libs.client import ClientSession, ClientMessenger
 from libs.client import ClientProcessor, ClientPacker
@@ -188,9 +186,6 @@ async def create_facebook(database: AccountDBI, current_user: ID) -> CommonFaceb
     # set for group manager
     g_man = SharedGroupManager()
     g_man.facebook = facebook
-    # config chat storage
-    cs = ChatStorage()
-    cs.bot = current_user
     return facebook
 
 
@@ -252,7 +247,7 @@ async def start_bot(default_config: str, app_name: str, ans_name: str, processor
     config = await create_config(app_name=app_name, default_config=default_config)
     shared.config = config
     if not check_bot_id(config=config, ans_name=ans_name):
-        raise LookupError('Failed to get Bot ID: %s' % config)
+        raise LookupError('Failed to get Bot ID: "%s", %s' % (ans_name, config))
     # Step 2: create database
     db = await create_database(config=config)
     shared.adb = db

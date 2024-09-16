@@ -33,24 +33,24 @@
 
 import sys
 import os
-from typing import Optional, List
+from typing import List
 
+from dimp import FileContent, CustomizedContent
 from dimples import EntityType, ID
-from dimples import Content, TextContent
-from dimples import CommonFacebook
+from dimples import TextContent
 
 curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 
-from libs.utils import Log, Runner
-
-from libs.chat import Greeting, ChatRequest
-from libs.chat import ChatBox, ChatClient
+from libs.utils import Runner
+from libs.utils import Log, Logging
 
 from libs.client import ClientProcessor
 from libs.client import SharedGroupManager
-from libs.client import Emitter
+from libs.client import Service, Request, BaseService
+
+from engine import Footprint
 
 from bots.shared import GlobalVariable
 from bots.shared import start_bot
@@ -62,17 +62,26 @@ g_vars = {
 }
 
 
-class GroupChatBox(ChatBox):
+class GroupUsher(BaseService, Logging):
 
-    # build group info
+    @property
+    def facebook(self):
+        shared = GlobalVariable()
+        return shared.facebook
+
     async def __group_info(self, group: ID) -> str:
+        """ build group info """
         facebook = self.facebook
         doc = await facebook.get_document(identifier=group)
-        name = group.name if doc is None else doc.name
+        if doc is None:
+            self.error(msg='group not ready: %s' % group)
+            name = group.name
+        else:
+            name = doc.name
         # name = md_esc(text=name)
         return '- Name: ***"%s"***\n- ID  : %s\n' % (name, group)
 
-    async def __query_current_group(self, request: ChatRequest):
+    async def __query_current_group(self, request: Request):
         current = g_vars.get('group')
         if isinstance(current, ID):
             text = 'Current group is:\n%s' % await self.__group_info(group=current)
@@ -83,7 +92,7 @@ class GroupChatBox(ChatBox):
             await self.respond_text(text=text, request=request)
             return False
 
-    async def __set_current_group(self, request: ChatRequest):
+    async def __set_current_group(self, request: Request):
         sender = request.envelope.sender
         group = request.content.group
         admins = g_vars['supervisors']
@@ -108,20 +117,7 @@ class GroupChatBox(ChatBox):
             await self.respond_text(text=text, request=request)
             return False
 
-    # Override
-    async def _ask_question(self, prompt: str, content: TextContent, request: ChatRequest) -> bool:
-        command = prompt.strip().lower()
-        # group commands
-        if command == 'set current group':
-            return await self.__set_current_group(request=request)
-        elif command == 'current group':
-            return await self.__query_current_group(request=request)
-        else:
-            text = 'Unexpected command: "%s"' % command
-            await self.respond_text(text=text, request=request)
-
-    # Override
-    async def _say_hi(self, prompt: str, request: Greeting) -> bool:
+    async def __invite(self, user: ID) -> bool:
         # check current group
         group = ID.parse(identifier=g_vars.get('group'))
         if group is None:
@@ -132,42 +128,68 @@ class GroupChatBox(ChatBox):
         if members is None or len(members) == 0:
             self.error(msg='group not ready: %s' % group)
             return False
-        identifier = request.identifier
-        assert identifier.type == EntityType.USER, 'user error: %s' % identifier
-        if identifier in members:
-            self.info(msg='member already exists: %s -> %s' % (identifier, group))
+        assert user.type == EntityType.USER, 'user error: %s' % user
+        if user in members:
+            self.info(msg='member already exists: %s -> %s' % (user, group))
             return False
-        self.info(msg='invite %s into group: %s' % (identifier, group))
+        self.info(msg='invite %s into group: %s' % (user, group))
         gm = SharedGroupManager()
-        return await gm.invite_members(members=[identifier], group=group)
+        return await gm.invite_members(members=[user], group=group)
 
     # Override
-    async def _send_content(self, content: Content, receiver: ID) -> bool:
-        emitter = Emitter()
-        await emitter.send_content(content=content, receiver=receiver)
-        return True
-
-
-class GroupChatClient(ChatClient):
-
-    def __init__(self, facebook: CommonFacebook):
-        super().__init__()
-        self.__facebook = facebook
+    async def _process_text_content(self, content: TextContent, request: Request):
+        fp = Footprint()
+        fp.touch(identifier=request.identifier, when=request.time)
+        text = await request.get_text(facebook=self.facebook)
+        if text is None:
+            self.error(msg='text content error: %s' % content)
+            return
+        command = text.strip().lower()
+        # group commands
+        if command == 'set current group':
+            return await self.__set_current_group(request=request)
+        elif command == 'current group':
+            return await self.__query_current_group(request=request)
+        else:
+            text = 'Unexpected command: "%s"' % text
+            await self.respond_text(text=text, request=request)
 
     # Override
-    def _new_box(self, identifier: ID) -> Optional[ChatBox]:
-        facebook = self.__facebook
-        return GroupChatBox(identifier=identifier, facebook=facebook)
+    async def _process_file_content(self, content: FileContent, request: Request):
+        fp = Footprint()
+        fp.touch(identifier=request.identifier, when=request.time)
+        text = 'Cannot process file contents now.'
+        await self.respond_text(text=text, request=request)
+
+    # Override
+    async def _process_customized_content(self, content: CustomizedContent, request: Request):
+        users = content.get('users')
+        if isinstance(users, List):
+            self.info(msg='received users: %s' % users)
+        else:
+            self.error(msg='users content error: %s, %s' % (content, request.envelope))
+            return
+        fp = Footprint()
+        when = content.time
+        for item in users:
+            identifier = ID.parse(identifier=item.get('U'))
+            if identifier is None or identifier.type != EntityType.USER:
+                self.warning(msg='ignore user: %s' % item)
+                continue
+            vanished = fp.is_vanished(identifier=identifier, now=when)
+            fp.touch(identifier=identifier, when=when)
+            self.info(msg='invite member? %s, %s' % (vanished, identifier))
+            if vanished:
+                await self.__invite(user=identifier)
 
 
 class BotMessageProcessor(ClientProcessor):
 
     # Override
-    def _create_chat_client(self) -> ChatClient:
-        client = GroupChatClient(facebook=self.facebook)
-        # Runner.async_task(coro=client.start())
-        Runner.thread_run(runner=client)
-        return client
+    def _create_service(self) -> Service:
+        service = GroupUsher()
+        Runner.thread_run(runner=service)
+        return service
 
 
 #
@@ -177,9 +199,6 @@ Log.LEVEL = Log.DEVELOP
 
 
 DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
-
-
-ChatBox.EXPIRES = 36000  # vanished after 10 hours
 
 
 async def async_main():

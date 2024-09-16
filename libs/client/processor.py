@@ -23,25 +23,36 @@
 # SOFTWARE.
 # ==============================================================================
 
-from abc import abstractmethod
-from typing import List
+from abc import ABC, abstractmethod
+from typing import Optional, List
 
-from dimples import EntityType, ID
 from dimples import ReliableMessage
-from dimples import Envelope
-from dimples import Content, TextContent, FileContent, CustomizedContent
+from dimples import Content, Envelope
 from dimples import CommonFacebook, CommonMessenger
 
 from dimples.client import ClientMessageProcessor
 
-from ..chat import Greeting, ChatRequest, ChatClient
+
+class Service(ABC):
+    """ Service Handler """
+
+    @abstractmethod
+    async def handle_request(self, content: Content, envelope: Envelope) -> Optional[List[Content]]:
+        """
+        Process content
+
+        :param content:  request body
+        :param envelope: request head
+        :return: None to pass this content to system
+        """
+        raise NotImplemented
 
 
-class ClientProcessor(ClientMessageProcessor):
+class ClientProcessor(ClientMessageProcessor, ABC):
 
     def __init__(self, facebook: CommonFacebook, messenger: CommonMessenger):
         super().__init__(facebook=facebook, messenger=messenger)
-        self.__chat_client = self._create_chat_client()
+        self.__service = self._create_service()
 
     @property
     def facebook(self) -> CommonFacebook:
@@ -50,46 +61,14 @@ class ClientProcessor(ClientMessageProcessor):
         return barrack
 
     @abstractmethod
-    def _create_chat_client(self) -> ChatClient:
-        """ Create Chat Client """
+    def _create_service(self) -> Service:
+        """ Create Service Handler """
         raise NotImplemented
-
-    def _process_text_content(self, content: TextContent, envelope: Envelope):
-        request = ChatRequest(content=content, envelope=envelope, facebook=self.facebook)
-        self.__chat_client.append(request=request)
-
-    def _process_file_content(self, content: FileContent, envelope: Envelope):
-        request = ChatRequest(content=content, envelope=envelope, facebook=self.facebook)
-        self.__chat_client.append(request=request)
-
-    def _process_users_content(self, content: CustomizedContent, envelope: Envelope):
-        users = content.get('users')
-        if isinstance(users, List):
-            self.info(msg='received users: %s' % users)
-        else:
-            self.error(msg='users content error: %s, %s' % (content, envelope))
-            return
-        for item in users:
-            identifier = ID.parse(identifier=item.get('U'))
-            if identifier is None or identifier.type != EntityType.USER:
-                self.warning(msg='ignore user: %s' % item)
-                continue
-            self.info(msg='say hi for %s' % identifier)
-            greeting = Greeting(identifier=identifier, content=content, envelope=envelope, facebook=self.facebook)
-            self.__chat_client.append(request=greeting)
 
     # Override
     async def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
-        if isinstance(content, TextContent):
-            self._process_text_content(content=content, envelope=r_msg.envelope)
-            return []
-        elif isinstance(content, FileContent):
-            self._process_file_content(content=content, envelope=r_msg.envelope)
-            return []
-        elif isinstance(content, CustomizedContent):
-            mod = content.module
-            if mod == 'users':
-                self._process_users_content(content=content, envelope=r_msg.envelope)
-            return []
-        # system contents
-        return await super().process_content(content=content, r_msg=r_msg)
+        service = self.__service
+        responses = await service.handle_request(content=content, envelope=r_msg.envelope)
+        if responses is None:
+            responses = await super().process_content(content=content, r_msg=r_msg)
+        return responses

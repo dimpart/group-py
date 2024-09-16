@@ -2,7 +2,7 @@
 # ==============================================================================
 # MIT License
 #
-# Copyright (c) 2019 Albert Moky
+# Copyright (c) 2024 Albert Moky
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,47 +23,27 @@
 # SOFTWARE.
 # ==============================================================================
 
-"""
-    Client Module
-    ~~~~~~~~~~~~~
+from .cpu import *
 
-"""
-
-from dimples.client import ClientSession, SessionState
-from dimples.client import ClientContentProcessorCreator
-from dimples.client import ClientMessenger
-from dimples.client import Terminal
-
-from .group import SharedGroupManager
-
-from .emitter import Emitter
-
-from .packer import ClientPacker
-from .processor import ClientProcessor
-from .processor import Service
-from .service import BaseService
-from .request import Request
+from .footprint import Footprint
+from .receptionist import Receptionist
 
 
 __all__ = [
 
-    #
-    #   Client
-    #
-    'ClientSession', 'SessionState',
-    'ClientContentProcessorCreator',
-    'ClientMessenger',
-    'Terminal',
+    'HandshakeCommandProcessor',
+    'LoginCommandProcessor',
 
-    'SharedGroupManager',
+    'HistoryCommandProcessor',
+    'GroupCommandProcessor',
+    'InviteCommandProcessor', 'ExpelCommandProcessor',
+    'JoinCommandProcessor', 'QuitCommandProcessor',
+    'ResetCommandProcessor', 'QueryCommandProcessor',
+    'ResignCommandProcessor',
 
-    'Emitter',
+    'ForwardContentProcessor',
 
-    'ClientPacker',
-    'ClientProcessor',
-
-    'Service',
-    'BaseService',
-    'Request',
+    'Footprint',
+    'Receptionist',
 
 ]
