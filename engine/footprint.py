@@ -27,23 +27,34 @@ from typing import Optional, List
 
 from dimples import DateTime
 from dimples import ID
+from dimples import CommonFacebook
 
 from libs.utils import Singleton
+from libs.utils import Logging
 from libs.common import ActiveUser
 from libs.database import Database
 
 
 @Singleton
-class Footprint:
+class Footprint(Logging):
 
     EXPIRES = 36000  # vanished after 10 hours
     INTERVAL = 600   # save interval
 
     def __init__(self):
         super().__init__()
+        self.__facebook: Optional[CommonFacebook] = None
         self.__db: Optional[Database] = None
         self.__active_users: Optional[List[ActiveUser]] = None
         self.__next_time = DateTime.now()  # next time to save
+
+    @property
+    def facebook(self) -> Optional[CommonFacebook]:
+        return self.__facebook
+
+    @facebook.setter
+    def facebook(self, barrack: CommonFacebook):
+        self.__facebook = barrack
 
     @property
     def database(self) -> Optional[Database]:
@@ -59,27 +70,27 @@ class Footprint:
         self.__next_time = DateTime(timestamp=next_time)
 
     # private
-    async def _sort_users(self, users: List[ActiveUser], now: DateTime) -> bool:
-        users.sort(key=lambda x: x.time, reverse=True)
-        if now > self.__next_time:
-            return await self._save_users(users=users, now=now)
-
-    # private
     async def _save_users(self, users: List[ActiveUser], now: DateTime):
+        facebook = self.facebook
+        assert facebook is not None, 'facebook not set yet'
+        users = await _sort_users(users=users, facebook=facebook)
+        self.__active_users = users
+        if now < self.__next_time:
+            self.info(msg='active users not saved now: %s' % now)
+            return False
+        # save to local storage
+        self._refresh_next_time(now=now)
         db = self.database
         assert db is not None, 'database not set yet'
-        self._refresh_next_time(now=now)
-        self.__active_users = users
         return await db.save_active_users(users=users)
 
     # private
     async def _load_users(self, now: DateTime) -> List[ActiveUser]:
+        # load from local storage
+        self._refresh_next_time(now=now)
         db = self.database
         assert db is not None, 'database not set yet'
-        self._refresh_next_time(now=now)
-        users = await db.load_active_users()
-        self.__active_users = users
-        return users
+        return await db.load_active_users()
 
     async def active_users(self, now: DateTime = None) -> List[ActiveUser]:
         users = self.__active_users
@@ -87,6 +98,7 @@ class Footprint:
             if now is None:
                 now = DateTime.now()
             users = await self._load_users(now=now)
+            self.__active_users = users
         return users
 
     # private
@@ -115,15 +127,17 @@ class Footprint:
         # check exist users
         now = DateTime.now()
         users = await self.active_users(now=now)
+        found = False
         for item in users:
             if item.identifier == identifier:
                 # found, update time and sort
-                if item.touch(when=when):
-                    return await self._sort_users(users=users, now=now)
-                return False
-        # insert new user
-        usr = ActiveUser(identifier=identifier, when=when)
-        users.insert(0, usr)
+                if not item.touch(when=when):
+                    self.info(msg='active user not touch: %s' % item)
+                found = True
+        if not found:
+            # insert new user
+            usr = ActiveUser(identifier=identifier, when=when)
+            users.insert(0, usr)
         return await self._save_users(users=users, now=now)
 
     async def is_vanished(self, identifier: ID, now: DateTime = None) -> bool:
@@ -131,3 +145,22 @@ class Footprint:
             now = DateTime.now()
         last = await self._last_time(identifier=identifier, now=now)
         return last is None or now > (last + self.EXPIRES)
+
+
+async def _sort_users(users: List[ActiveUser], facebook: CommonFacebook) -> List[ActiveUser]:
+    array = []
+    now = DateTime.now()
+    users = users.copy()
+    for item in users:
+        uid = item.identifier
+        visa = await facebook.get_visa(identifier=uid)
+        if visa is not None:
+            # update with visa time
+            last_time = visa.time
+            if last_time is not None:
+                item.touch(when=last_time)
+        # check whether it is gone
+        if item.recently_active(now=now):
+            array.append(item)
+    array.sort(key=lambda x: x.time, reverse=True)
+    return array

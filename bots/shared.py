@@ -191,6 +191,9 @@ async def create_facebook(database: AccountDBI, current_user: ID) -> CommonFaceb
     # set for group manager
     g_man = SharedGroupManager()
     g_man.facebook = facebook
+    # set for footprint
+    fp = Footprint()
+    fp.facebook = facebook
     return facebook
 
 

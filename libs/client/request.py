@@ -49,9 +49,13 @@ class Request(Logging):
         return self.__body
 
     @property
+    def sender(self) -> ID:
+        return self.envelope.sender
+
+    @property
     def identifier(self) -> ID:
         group = self.content.group
-        return self.envelope.sender if group is None else group
+        return self.sender if group is None else group
 
     @property
     def time(self) -> Optional[DateTime]:

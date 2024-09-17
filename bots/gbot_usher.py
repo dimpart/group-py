@@ -117,6 +117,49 @@ class GroupUsher(BaseService, Logging):
             await self.respond_text(text=text, request=request)
             return False
 
+    async def __show_active_users(self, request: Request):
+        facebook = self.facebook
+        fp = Footprint()
+        users = await fp.active_users()
+        active_users = []
+        # build text
+        text = '## Active Users\n'
+        text += '| Name | Last Time |\n'
+        text += '|------|-----------|\n'
+        for item in users:
+            uid = item.identifier
+            # get nickname
+            visa = await facebook.get_visa(identifier=uid)
+            name = None if visa is None else visa.name
+            if name is None or len(name) == 0:
+                name = uid.name
+                if name is None or len(name) == 0:
+                    name = str(uid)
+            text += '| %s | _%s_ |\n' % (name, item.time)
+            active_users.append(str(uid))
+        text += '\n'
+        text += 'Totally %d active users.' % len(active_users)
+        # search tag
+        content = request.content
+        tag = content.get('tag')
+        title = content.get('title')
+        hidden = content.get('hidden')
+        self.info(msg='respond %d bytes with tag %s to %s' % (len(text), tag, request.identifier))
+        await self.respond_markdown(text=text, request=request, extra={
+            'muted': 'yes',
+            'hidden': hidden,
+
+            'app': 'chat.dim.users',
+            'mod': 'active_users',
+            'act': 'respond',
+            'expires': 300,
+
+            'active_users': active_users,
+
+            'tag': tag,
+            'title': title,
+        })
+
     async def __invite(self, user: ID) -> bool:
         # check current group
         group = ID.parse(identifier=g_vars.get('group'))
@@ -139,7 +182,7 @@ class GroupUsher(BaseService, Logging):
     # Override
     async def _process_text_content(self, content: TextContent, request: Request):
         fp = Footprint()
-        await fp.touch(identifier=request.identifier, when=request.time)
+        await fp.touch(identifier=request.sender, when=request.time)
         text = await request.get_text(facebook=self.facebook)
         if text is None:
             self.error(msg='text content error: %s' % content)
@@ -150,6 +193,8 @@ class GroupUsher(BaseService, Logging):
             return await self.__set_current_group(request=request)
         elif command == 'current group':
             return await self.__query_current_group(request=request)
+        elif command == 'active users':
+            return await self.__show_active_users(request=request)
         else:
             text = 'Unexpected command: "%s"' % text
             await self.respond_text(text=text, request=request)
@@ -157,7 +202,7 @@ class GroupUsher(BaseService, Logging):
     # Override
     async def _process_file_content(self, content: FileContent, request: Request):
         fp = Footprint()
-        await fp.touch(identifier=request.identifier, when=request.time)
+        await fp.touch(identifier=request.sender, when=request.time)
         text = 'Cannot process file contents now.'
         await self.respond_text(text=text, request=request)
 

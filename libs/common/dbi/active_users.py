@@ -32,6 +32,8 @@ from dimples import ID
 
 class ActiveUser:
 
+    MONTHLY = 3600 * 24 * 30
+
     def __init__(self, identifier: ID, when: DateTime):
         super().__init__()
         self.__identifier = identifier
@@ -52,6 +54,9 @@ class ActiveUser:
             return True
         else:
             return False
+
+    def recently_active(self, now: DateTime) -> bool:
+        return now < (self.__time + self.MONTHLY)
 
     #
     #   Factories
