@@ -23,43 +23,111 @@
 # SOFTWARE.
 # ==============================================================================
 
-from typing import Optional
+from typing import Optional, List
 
 from dimples import DateTime
 from dimples import ID
 
 from libs.utils import Singleton
+from libs.common import ActiveUser
+from libs.database import Database
 
 
 @Singleton
 class Footprint:
 
     EXPIRES = 36000  # vanished after 10 hours
+    INTERVAL = 600   # save interval
 
     def __init__(self):
         super().__init__()
-        self.__active_times = {}  # ID => DateTime
+        self.__db: Optional[Database] = None
+        self.__active_users: Optional[List[ActiveUser]] = None
+        self.__next_time = DateTime.now()  # next time to save
 
-    def __get_time(self, identifier: ID, when: Optional[DateTime]) -> Optional[DateTime]:
+    @property
+    def database(self) -> Optional[Database]:
+        return self.__db
+
+    @database.setter
+    def database(self, db: Database):
+        self.__db = db
+
+    # private
+    def _refresh_next_time(self, now: DateTime):
+        next_time = now + self.INTERVAL
+        self.__next_time = DateTime(timestamp=next_time)
+
+    # private
+    async def _sort_users(self, users: List[ActiveUser], now: DateTime) -> bool:
+        users.sort(key=lambda x: x.time, reverse=True)
+        if now > self.__next_time:
+            return await self._save_users(users=users, now=now)
+
+    # private
+    async def _save_users(self, users: List[ActiveUser], now: DateTime):
+        db = self.database
+        assert db is not None, 'database not set yet'
+        self._refresh_next_time(now=now)
+        self.__active_users = users
+        return await db.save_active_users(users=users)
+
+    # private
+    async def _load_users(self, now: DateTime) -> List[ActiveUser]:
+        db = self.database
+        assert db is not None, 'database not set yet'
+        self._refresh_next_time(now=now)
+        users = await db.load_active_users()
+        self.__active_users = users
+        return users
+
+    async def active_users(self, now: DateTime = None) -> List[ActiveUser]:
+        users = self.__active_users
+        if users is None:
+            if now is None:
+                now = DateTime.now()
+            users = await self._load_users(now=now)
+        return users
+
+    # private
+    async def _last_time(self, identifier: ID, now: DateTime) -> Optional[DateTime]:
+        users = await self.active_users(now=now)
+        for item in users:
+            if item.identifier == identifier:
+                return item.time
+
+    # private
+    async def _check_time(self, identifier: ID, when: Optional[DateTime]) -> Optional[DateTime]:
         now = DateTime.now()
         if when is None or when <= 0 or when >= now:
             return now
-        elif when > self.__active_times.get(identifier, 0):
+        last = await self._last_time(identifier=identifier, now=now)
+        if last is None or last < when:
             return when
         # else:
         #     # time expired, drop it
         #     return None
 
-    def touch(self, identifier: ID, when: DateTime = None):
-        when = self.__get_time(identifier=identifier, when=when)
-        if when is not None:
-            self.__active_times[identifier] = when
-            return True
+    async def touch(self, identifier: ID, when: DateTime = None):
+        when = await self._check_time(identifier=identifier, when=when)
+        if when is None:
+            return False
+        # check exist users
+        now = DateTime.now()
+        users = await self.active_users(now=now)
+        for item in users:
+            if item.identifier == identifier:
+                # found, update time and sort
+                if item.touch(when=when):
+                    return await self._sort_users(users=users, now=now)
+                return False
+        # insert new user
+        usr = ActiveUser(identifier=identifier, when=when)
+        users.insert(0, usr)
+        return await self._save_users(users=users, now=now)
 
-    def is_vanished(self, identifier: ID, now: DateTime = None) -> bool:
-        last_time = self.__active_times.get(identifier)
-        if last_time is None:
-            return True
+    async def is_vanished(self, identifier: ID, now: DateTime = None) -> bool:
         if now is None:
             now = DateTime.now()
-        return now > (last_time + self.EXPIRES)
+        last = await self._last_time(identifier=identifier, now=now)
+        return last is None or now > (last + self.EXPIRES)

@@ -71,7 +71,7 @@ class Distributor:
         return await self.messenger.send_content(sender=None, receiver=receiver, content=content, priority=1)
 
     async def __deliver(self, msg: ReliableMessage, receiver: ID):
-        if self.footprint.is_vanished(identifier=receiver):
+        if await self.footprint.is_vanished(identifier=receiver):
             # the receiver isn't present recently, store this message to inbox
             return await self.database.inbox_cache_reliable_message(msg=msg, receiver=receiver)
         else:
@@ -145,10 +145,10 @@ class Receptionist(Runner, Logging):
     def messenger(self, transceiver: CommonMessenger):
         self.__distributor.messenger = transceiver
 
-    def touch(self, identifier: ID, when: DateTime = None):
+    async def touch(self, identifier: ID, when: DateTime = None):
         fp = self.footprint
-        vanished = fp.is_vanished(identifier=identifier)
-        touched = fp.touch(identifier=identifier, when=when)
+        vanished = await fp.is_vanished(identifier=identifier)
+        touched = await fp.touch(identifier=identifier, when=when)
         if vanished and touched:
             with self.__lock:
                 self.__users.append(identifier)

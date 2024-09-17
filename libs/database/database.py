@@ -46,7 +46,9 @@ from dimples.database import GroupTable
 from dimples.database import GroupHistoryTable
 from dimples.database import GroupKeysTable
 
+from ..common.dbi import ActiveUser
 from .t_group_inbox import GroupInboxMessageTable
+from .t_active_users import ActiveUserTable
 
 
 class Database(AccountDBI, MessageDBI, SessionDBI):
@@ -65,6 +67,8 @@ class Database(AccountDBI, MessageDBI, SessionDBI):
         self.__grp_keys_table = GroupKeysTable(info=info)
         self.__cipherkey_table = CipherKeyTable(info=info)
         self.__inbox_table = GroupInboxMessageTable(info=info)
+        # Active Users
+        self.__active_users_table = ActiveUserTable(info=info)
         # # ANS
         # self.__ans_table = AddressNameTable(info=info)
 
@@ -388,6 +392,19 @@ class Database(AccountDBI, MessageDBI, SessionDBI):
     async def save_login_command_message(self, user: ID, content: LoginCommand, msg: ReliableMessage) -> bool:
         # TODO: save login command & messages
         return True
+
+    """
+        Active Users
+        ~~~~~~~~~~~~
+
+        file path: '.dim/private/active_users.js'
+    """
+
+    async def save_active_users(self, users: List[ActiveUser]) -> bool:
+        return await self.__active_users_table.save_active_users(users=users)
+
+    async def load_active_users(self) -> List[ActiveUser]:
+        return await self.__active_users_table.load_active_users()
 
     #
     #   Provider DBI

@@ -139,7 +139,7 @@ class GroupUsher(BaseService, Logging):
     # Override
     async def _process_text_content(self, content: TextContent, request: Request):
         fp = Footprint()
-        fp.touch(identifier=request.identifier, when=request.time)
+        await fp.touch(identifier=request.identifier, when=request.time)
         text = await request.get_text(facebook=self.facebook)
         if text is None:
             self.error(msg='text content error: %s' % content)
@@ -157,7 +157,7 @@ class GroupUsher(BaseService, Logging):
     # Override
     async def _process_file_content(self, content: FileContent, request: Request):
         fp = Footprint()
-        fp.touch(identifier=request.identifier, when=request.time)
+        await fp.touch(identifier=request.identifier, when=request.time)
         text = 'Cannot process file contents now.'
         await self.respond_text(text=text, request=request)
 
@@ -176,8 +176,8 @@ class GroupUsher(BaseService, Logging):
             if identifier is None or identifier.type != EntityType.USER:
                 self.warning(msg='ignore user: %s' % item)
                 continue
-            vanished = fp.is_vanished(identifier=identifier, now=when)
-            fp.touch(identifier=identifier, when=when)
+            vanished = await fp.is_vanished(identifier=identifier, now=when)
+            await fp.touch(identifier=identifier, when=when)
             self.info(msg='invite member? %s, %s' % (vanished, identifier))
             if vanished:
                 await self.__invite(user=identifier)

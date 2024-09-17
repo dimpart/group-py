@@ -46,6 +46,8 @@ from libs.client import ClientProcessor, ClientPacker
 from libs.client import Emitter
 from libs.client import SharedGroupManager
 
+from engine import Footprint
+
 
 @Singleton
 class GlobalVariable:
@@ -156,6 +158,9 @@ async def create_database(config: Config) -> Database:
         for node in neighbors:
             print('adding neighbor node: %s' % node)
             await db.add_station(identifier=None, host=node.host, port=node.port, provider=provider)
+    # set for footprint
+    fp = Footprint()
+    fp.database = db
     # OK
     return db
 

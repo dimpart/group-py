@@ -47,7 +47,8 @@ class BaseService(Runner, Service, ABC):
 
     def _add_request(self, content: Content, envelope: Envelope):
         with self.__lock:
-            self.__requests.append(Request(envelope=envelope, content=content))
+            req = Request(envelope=envelope, content=content)
+            self.__requests.append(req)
 
     def _next_request(self) -> Optional[Request]:
         with self.__lock:

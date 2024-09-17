@@ -69,7 +69,7 @@ class AssistantProcessor(ClientMessageProcessor):
 
     # Override
     async def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
-        g_receptionist.touch(identifier=r_msg.sender, when=content.time)
+        await g_receptionist.touch(identifier=r_msg.sender, when=content.time)
         return await super().process_content(content=content, r_msg=r_msg)
 
     # Override

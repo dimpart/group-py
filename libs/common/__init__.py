@@ -2,7 +2,7 @@
 # ==============================================================================
 # MIT License
 #
-# Copyright (c) 2019 Albert Moky
+# Copyright (c) 2024 Albert Moky
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -24,26 +24,21 @@
 # ==============================================================================
 
 """
-    Database module
-    ~~~~~~~~~~~~~~~
-    File System
+    Common module
+    ~~~~~~~~~~~~~
+
 """
 
-from dimples.database.dos import *
-
-from .active_users import ActiveUserStorage
+from .dbi import *
 
 
 __all__ = [
 
-    'Storage',
-    'PrivateKeyStorage', 'MetaStorage', 'DocumentStorage',
-    'UserStorage',
-    'GroupStorage', 'GroupHistoryStorage',
-    'GroupKeysStorage',
-    'LoginStorage',
-    'StationStorage',
+    #
+    #   Database Interface
+    #
 
-    'ActiveUserStorage',
+    'ActiveUser',
+    'ActiveUserDBI',
 
 ]
