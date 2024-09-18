@@ -64,6 +64,9 @@ g_vars = {
 
 class GroupUsher(BaseService, Logging):
 
+    # list foot
+    LIST_DESC = ''
+
     @property
     def facebook(self):
         shared = GlobalVariable()
@@ -143,21 +146,25 @@ class GroupUsher(BaseService, Logging):
         content = request.content
         tag = content.get('tag')
         title = content.get('title')
+        keywords = content.get('keywords')
         hidden = content.get('hidden')
-        self.info(msg='respond %d bytes with tag %s to %s' % (len(text), tag, request.identifier))
-        await self.respond_markdown(text=text, request=request, extra={
-            'muted': 'yes',
+        self.info(msg='respond %d users with tag %s to %s' % (len(active_users), tag, request.identifier))
+        return await self.respond_text(text=text, request=request, extra={
+            'format': 'markdown',
+            'muted': hidden,
             'hidden': hidden,
 
-            'app': 'chat.dim.users',
-            'mod': 'active_users',
+            'app': 'chat.dim.search',
+            'mod': 'users',
             'act': 'respond',
-            'expires': 300,
-
-            'active_users': active_users,
+            'expires': 600,
 
             'tag': tag,
             'title': title,
+            'keywords': keywords,
+
+            'users': active_users,
+            'description': self.LIST_DESC,
         })
 
     async def __invite(self, user: ID) -> bool:
@@ -183,11 +190,16 @@ class GroupUsher(BaseService, Logging):
     async def _process_text_content(self, content: TextContent, request: Request):
         fp = Footprint()
         await fp.touch(identifier=request.sender, when=request.time)
-        text = await request.get_text(facebook=self.facebook)
-        if text is None:
-            self.error(msg='text content error: %s' % content)
-            return
-        command = text.strip().lower()
+        # get keywords as command
+        keywords = content.get_str(key='keywords', default='')
+        if len(keywords) == 0:
+            keywords = content.get_str(key='title', default='')
+            if len(keywords) == 0:
+                keywords = await request.get_text(facebook=self.facebook)
+                if keywords is None:
+                    # self.error(msg='text content error: %s' % content)
+                    return
+        command = keywords.strip().lower()
         # group commands
         if command == 'set current group':
             return await self.__set_current_group(request=request)
@@ -196,15 +208,16 @@ class GroupUsher(BaseService, Logging):
         elif command == 'active users':
             return await self.__show_active_users(request=request)
         else:
-            text = 'Unexpected command: "%s"' % text
+            text = 'Unexpected command: "%s"' % keywords
             await self.respond_text(text=text, request=request)
 
     # Override
     async def _process_file_content(self, content: FileContent, request: Request):
         fp = Footprint()
         await fp.touch(identifier=request.sender, when=request.time)
-        text = 'Cannot process file contents now.'
-        await self.respond_text(text=text, request=request)
+        if content.group is None:
+            text = 'Cannot process file contents now.'
+            await self.respond_text(text=text, request=request)
 
     # Override
     async def _process_customized_content(self, content: CustomizedContent, request: Request):
