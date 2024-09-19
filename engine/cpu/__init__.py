@@ -32,6 +32,8 @@
 
 from dimples.client.cpu import *
 
+from .customized import CustomizedHandler
+from .customized import CustomizedProcessor
 from .forward import ForwardContentProcessor
 
 
@@ -47,6 +49,8 @@ __all__ = [
     'ResetCommandProcessor', 'QueryCommandProcessor',
     'ResignCommandProcessor',
 
+    'CustomizedHandler',
+    'CustomizedProcessor',
     'ForwardContentProcessor',
 
 ]

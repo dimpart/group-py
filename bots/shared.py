@@ -47,6 +47,8 @@ from libs.client import Emitter
 from libs.client import SharedGroupManager
 from libs.client import Footprint
 
+from engine import CustomizedHandler
+
 
 @Singleton
 class GlobalVariable:
@@ -160,6 +162,9 @@ async def create_database(config: Config) -> Database:
     # set for footprint
     fp = Footprint()
     fp.database = db
+    # set for group key handler
+    gkh = CustomizedHandler()
+    gkh.database = db
     # OK
     return db
 

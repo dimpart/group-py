@@ -48,6 +48,7 @@ sys.path.append(rootPath)
 from libs.utils import Log, Runner
 from libs.client import ClientContentProcessorCreator
 
+from engine import CustomizedProcessor
 from engine import ForwardContentProcessor
 from engine import Receptionist
 
@@ -58,9 +59,12 @@ class AssistantContentProcessorCreator(ClientContentProcessorCreator):
 
     # Override
     def create_content_processor(self, msg_type: Union[int, ContentType]) -> Optional[ContentProcessor]:
-        # text
+        # forward
         if msg_type == ContentType.FORWARD:
             return ForwardContentProcessor(facebook=self.facebook, messenger=self.messenger)
+        # customized
+        if msg_type == ContentType.FORWARD:
+            return CustomizedProcessor(facebook=self.facebook, messenger=self.messenger)
         # others
         return super().create_content_processor(msg_type=msg_type)
 

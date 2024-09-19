@@ -40,6 +40,8 @@ __all__ = [
     'ResetCommandProcessor', 'QueryCommandProcessor',
     'ResignCommandProcessor',
 
+    'CustomizedHandler',
+    'CustomizedProcessor',
     'ForwardContentProcessor',
 
     'Receptionist',

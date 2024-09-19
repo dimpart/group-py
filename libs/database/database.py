@@ -44,11 +44,11 @@ from dimples.database import MetaTable
 from dimples.database import DocumentTable
 from dimples.database import GroupTable
 from dimples.database import GroupHistoryTable
-from dimples.database import GroupKeysTable
 
 from ..common.dbi import ActiveUser
 from .t_group_inbox import GroupInboxMessageTable
 from .t_active_users import ActiveUserTable
+from .t_group_keys import GroupKeysTable
 
 
 class Database(AccountDBI, MessageDBI, SessionDBI):
