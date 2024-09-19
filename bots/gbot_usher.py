@@ -48,9 +48,8 @@ from libs.utils import Log, Logging
 
 from libs.client import ClientProcessor
 from libs.client import SharedGroupManager
+from libs.client import Footprint
 from libs.client import Service, Request, BaseService
-
-from engine import Footprint
 
 from bots.shared import GlobalVariable
 from bots.shared import start_bot
@@ -121,6 +120,7 @@ class GroupUsher(BaseService, Logging):
             return False
 
     async def __show_active_users(self, request: Request):
+        sender = request.sender
         facebook = self.facebook
         fp = Footprint()
         users = await fp.active_users()
@@ -131,6 +131,8 @@ class GroupUsher(BaseService, Logging):
         text += '|------|-----------|\n'
         for item in users:
             uid = item.identifier
+            if uid == sender:
+                continue
             # get nickname
             visa = await facebook.get_visa(identifier=uid)
             name = None if visa is None else visa.name
@@ -141,7 +143,7 @@ class GroupUsher(BaseService, Logging):
             text += '| %s | _%s_ |\n' % (name, item.time)
             active_users.append(str(uid))
         text += '\n'
-        text += 'Totally %d active users.' % len(active_users)
+        text += 'Totally %d users.' % len(active_users)
         # search tag
         content = request.content
         tag = content.get('tag')

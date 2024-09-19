@@ -29,10 +29,10 @@ from dimples import DateTime
 from dimples import EntityType, ID
 from dimples import CommonFacebook
 
-from libs.utils import Singleton
-from libs.utils import Logging
-from libs.common import ActiveUser
-from libs.database import Database
+from ..utils import Singleton
+from ..utils import Logging
+from ..common import ActiveUser
+from ..database import Database
 
 
 @Singleton

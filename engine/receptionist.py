@@ -34,8 +34,7 @@ from dimples import CommonMessenger
 from libs.utils import Singleton, Logging
 from libs.utils import Runner
 from libs.database import Database
-
-from .footprint import Footprint
+from libs.client import Footprint
 
 
 @Singleton

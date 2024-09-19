@@ -25,7 +25,6 @@
 
 from .cpu import *
 
-from .footprint import Footprint
 from .receptionist import Receptionist
 
 
@@ -43,7 +42,6 @@ __all__ = [
 
     'ForwardContentProcessor',
 
-    'Footprint',
     'Receptionist',
 
 ]

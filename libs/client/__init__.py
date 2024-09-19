@@ -35,7 +35,7 @@ from dimples.client import ClientMessenger
 from dimples.client import Terminal
 
 from .group import SharedGroupManager
-
+from .footprint import Footprint
 from .emitter import Emitter
 
 from .packer import ClientPacker
@@ -56,7 +56,7 @@ __all__ = [
     'Terminal',
 
     'SharedGroupManager',
-
+    'Footprint',
     'Emitter',
 
     'ClientPacker',

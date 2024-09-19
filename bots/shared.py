@@ -45,8 +45,7 @@ from libs.client import ClientSession, ClientMessenger
 from libs.client import ClientProcessor, ClientPacker
 from libs.client import Emitter
 from libs.client import SharedGroupManager
-
-from engine import Footprint
+from libs.client import Footprint
 
 
 @Singleton
