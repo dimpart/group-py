@@ -131,7 +131,11 @@ class GroupUsher(BaseService, Logging):
         text += '|------|-----------|\n'
         for item in users:
             uid = item.identifier
-            if uid == sender:
+            if uid.type != EntityType.USER:
+                self.info(msg='ignore user: %s' % uid)
+                continue
+            elif uid == sender:
+                self.info(msg='skip the sender: %s' % uid)
                 continue
             # get nickname
             visa = await facebook.get_visa(identifier=uid)
@@ -150,7 +154,7 @@ class GroupUsher(BaseService, Logging):
         title = content.get('title')
         keywords = content.get('keywords')
         hidden = content.get('hidden')
-        self.info(msg='respond %d users with tag %s to %s' % (len(active_users), tag, request.identifier))
+        self.info(msg='respond %d/%d users, tag %s, %s' % (len(active_users), len(users), tag, request.identifier))
         return await self.respond_text(text=text, request=request, extra={
             'format': 'markdown',
             'muted': hidden,

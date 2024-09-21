@@ -26,7 +26,7 @@
 from typing import Optional, List
 
 from dimples import DateTime
-from dimples import EntityType, ID
+from dimples import ID
 from dimples import CommonFacebook
 
 from ..utils import Singleton
@@ -121,8 +121,8 @@ class Footprint(Logging):
         #     return None
 
     async def touch(self, identifier: ID, when: DateTime = None):
-        if EntityType.USER != identifier.type:
-            self.info(msg='ignore user: %s' % identifier)
+        if identifier.is_group:
+            self.info(msg='ignore group: %s' % identifier)
             return False
         when = await self._check_time(identifier=identifier, when=when)
         if when is None:

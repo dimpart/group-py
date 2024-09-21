@@ -47,7 +47,7 @@ from libs.client import Emitter
 from libs.client import SharedGroupManager
 from libs.client import Footprint
 
-from engine import CustomizedHandler
+from engine import GroupKeyManager
 
 
 @Singleton
@@ -163,8 +163,8 @@ async def create_database(config: Config) -> Database:
     fp = Footprint()
     fp.database = db
     # set for group key handler
-    gkh = CustomizedHandler()
-    gkh.database = db
+    key_man = GroupKeyManager()
+    key_man.database = db
     # OK
     return db
 

@@ -28,11 +28,9 @@ from typing import Optional, List, Dict
 from dimples import DateTime
 from dimples import ID
 from dimples import ReliableMessage
-from dimples import Envelope, Content
-from dimples import CustomizedContent, ReceiptCommand
+from dimples import Content
+from dimples import CustomizedContent
 from dimples import CustomizedContentProcessor
-from dimples import CustomizedContentHandler
-from dimples import TwinsHelper
 
 from libs.utils import Singleton
 from libs.database import Database
@@ -99,7 +97,7 @@ class GroupKeyCommand:
 
 
 @Singleton
-class CustomizedHandler(CustomizedContentHandler):
+class GroupKeyManager:
 
     def __init__(self):
         super().__init__()
@@ -113,60 +111,39 @@ class CustomizedHandler(CustomizedContentHandler):
     def database(self, db: Database):
         self.__db = db
 
-    # noinspection PyMethodMayBeStatic
-    def _respond_receipt(self, text: str, envelope: Envelope, content: Optional[Content],
-                         extra: Optional[Dict] = None) -> List[ReceiptCommand]:
-        return [
-            # create base receipt command with text, original envelope, serial number & group ID
-            TwinsHelper.create_receipt(text=text, envelope=envelope, content=content, extra=extra)
-        ]
-
-    async def _update_group_keys(self, group: ID, sender: ID,
-                                 content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
+    async def save_group_keys(self, group: ID, sender: ID, keys: Dict[str, str]) -> bool:
         db = self.database
         assert db is not None, 'database not set yet'
-        keys = content.get('keys')
-        if not isinstance(keys, Dict):
-            text = 'Group keys error, failed to update.'
-        elif await db.save_group_keys(group=group, sender=sender, keys=keys):
-            text = 'Group keys updated.'
-        else:
-            text = 'Failed to update group keys.'
-        # respond
-        return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
+        return await db.save_group_keys(group=group, sender=sender, keys=keys)
 
-    async def _query_group_key(self, group: ID, member: ID,
-                               content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
-        key_sender = ID.parse(identifier=content.get('from'))
-        if key_sender is None:
-            text = 'Failed to get group keys sender.'
-            return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
-        else:
-            db = self.database
-            assert db is not None, 'database not set yet'
-            sender = msg.sender
-        # get group keys
-        keys = await db.get_group_keys(group=group, sender=sender)
+    async def load_group_keys(self, group: ID, sender: ID) -> Optional[Dict[str, str]]:
+        db = self.database
+        assert db is not None, 'database not set yet'
+        return await db.get_group_keys(group=group, sender=sender)
+
+    async def get_group_key(self, group: ID, sender: ID, member: ID) -> Optional[str]:
+        keys = await self.load_group_keys(group=group, sender=sender)
         if keys is None:
-            keys = {}
-        else:
-            assert isinstance(keys, Dict), 'group keys error: %s' % keys
-        # check group key
-        encrypted_key = keys.get(str(member))
-        if encrypted_key is None:
-            text = 'Failed to get group key.'
-            return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
-        # build respond
-        res = GroupKeyCommand.respond(group=group, sender=sender, keys={
-            str(member): encrypted_key,
-            'digest': keys.get('digest'),
-            'time': keys.get('time'),
-        })
-        return [res]
+            return None
+        assert isinstance(keys, Dict), 'group keys error: %s' % keys
+        return keys.get(str(member))
+
+
+class CustomizedProcessor(CustomizedContentProcessor):
+
+    # Override
+    def _filter(self, app: str, content: CustomizedContent, msg: ReliableMessage) -> Optional[List[Content]]:
+        if app == GroupKeyCommand.APP:
+            # app == 'chat.dim.group'
+            return None
+        # not supported
+        return super()._filter(app=app, content=content, msg=msg)
 
     # Override
     async def handle_action(self, act: str, sender: ID,
                             content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
+        if content.module != GroupKeyCommand.MOD:
+            return await super().handle_action(act=act, sender=sender, content=content, msg=msg)
         group = content.group
         if group is None:
             text = 'Group content error.'
@@ -191,21 +168,41 @@ class CustomizedHandler(CustomizedContentHandler):
             text = 'Action not supported: %s.' % act
             return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
 
+    async def _update_group_keys(self, group: ID, sender: ID,
+                                 content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
+        db = GroupKeyManager()
+        keys = content.get('keys')
+        if not isinstance(keys, Dict):
+            text = 'Group keys error, failed to update.'
+        elif await db.save_group_keys(group=group, sender=sender, keys=keys):
+            text = 'Group keys updated.'
+        else:
+            text = 'Failed to update group keys.'
+        # respond
+        return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
 
-class CustomizedProcessor(CustomizedContentProcessor):
-
-    # Override
-    def _filter(self, app: str, content: CustomizedContent, msg: ReliableMessage) -> Optional[List[Content]]:
-        if app == GroupKeyCommand.APP:
-            # app == 'chat.dim.group'
-            return None
-        # not supported
-        return super()._filter(app=app, content=content, msg=msg)
-
-    # Override
-    def _fetch(self, mod: str, content: CustomizedContent, msg: ReliableMessage) -> Optional[CustomizedContentHandler]:
-        if mod == GroupKeyCommand.MOD:
-            # mod == 'keys'
-            return CustomizedHandler()
-        # others
-        return super()._fetch(mod=mod, content=content, msg=msg)
+    async def _query_group_key(self, group: ID, member: ID,
+                               content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
+        key_sender = ID.parse(identifier=content.get('from'))
+        if key_sender is None:
+            text = 'Failed to get group keys sender.'
+            return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
+        db = GroupKeyManager()
+        # get group keys
+        keys = await db.load_group_keys(group=group, sender=key_sender)
+        if keys is None:
+            keys = {}
+        else:
+            assert isinstance(keys, Dict), 'group keys error: %s' % keys
+        # check group key
+        encrypted_key = keys.get(str(member))
+        if encrypted_key is None:
+            text = 'Failed to get group key.'
+            return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
+        # build respond
+        res = GroupKeyCommand.respond(group=group, sender=key_sender, keys={
+            str(member): encrypted_key,
+            'digest': keys.get('digest'),
+            'time': keys.get('time'),
+        })
+        return [res]
