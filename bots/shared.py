@@ -48,6 +48,7 @@ from libs.client import SharedGroupManager
 from libs.client import Footprint
 
 from engine import GroupKeyManager
+from engine import GroupMessageDistributor, GroupMessageHandler
 
 
 @Singleton
@@ -165,6 +166,11 @@ async def create_database(config: Config) -> Database:
     # set for group key handler
     key_man = GroupKeyManager()
     key_man.database = db
+    # set for group message handlers
+    gm_han = GroupMessageHandler()
+    gm_dis = GroupMessageDistributor()
+    gm_han.database = db
+    gm_dis.database = db
     # OK
     return db
 
@@ -198,6 +204,9 @@ async def create_facebook(database: AccountDBI, current_user: ID) -> CommonFaceb
     # set for footprint
     fp = Footprint()
     fp.facebook = facebook
+    # set for group message handler
+    gm_han = GroupMessageHandler()
+    gm_han.facebook = facebook
     return facebook
 
 
@@ -227,6 +236,11 @@ def create_messenger(facebook: CommonFacebook, database: MessageDBI,
     # set for group manager
     g_man = SharedGroupManager()
     g_man.messenger = messenger
+    # set for group message handlers
+    gm_han = GroupMessageHandler()
+    gm_dis = GroupMessageDistributor()
+    gm_han.messenger = messenger
+    gm_dis.messenger = messenger
     return messenger
 
 

@@ -42,6 +42,9 @@ __all__ = [
 
     'GroupKeyManager',
     'CustomizedProcessor',
+
+    'GroupMessageDistributor',
+    'GroupMessageHandler',
     'ForwardContentProcessor',
 
     'Receptionist',

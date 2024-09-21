@@ -23,18 +23,258 @@
 # SOFTWARE.
 # ==============================================================================
 
-
-from typing import List
+import threading
+from typing import Optional, Set, List, Dict
 
 from dimples import ID, ReliableMessage
-from dimples import Content, ForwardContent, ArrayContent
+from dimples import Content, ForwardContent
 from dimples import BaseContentProcessor
 from dimples import CommonFacebook, CommonMessenger
+from dimples import TwinsHelper
+
+from libs.utils import Singleton
+from libs.utils import Runner
+from libs.utils import Logging
+from libs.common import GroupKeyCommand
+from libs.database import Database
+from libs.client import Footprint
 
 
-def forward_messages(messages: List[ReliableMessage]) -> List[Content]:
-    """ Convert reliable messages to forward contents """
-    return [] if len(messages) == 0 else [ForwardContent.create(messages=messages)]
+@Singleton
+class GroupMessageDistributor(Runner, Logging):
+
+    def __init__(self):
+        super().__init__(interval=Runner.INTERVAL_SLOW)
+        self.__db: Optional[Database] = None
+        self.__messenger: Optional[CommonMessenger] = None
+        # waiting members
+        self.__members: Set[ID] = set()
+        self.__lock = threading.Lock()
+        # Runner.async_task(coro=self.start())
+        Runner.thread_run(runner=self)
+
+    @property
+    def database(self) -> Optional[Database]:
+        return self.__db
+
+    @database.setter
+    def database(self, db: Database):
+        self.__db = db
+
+    @property
+    def messenger(self) -> CommonMessenger:
+        return self.__messenger
+
+    @messenger.setter
+    def messenger(self, transceiver: CommonMessenger):
+        self.__messenger = transceiver
+
+    async def cache_message(self, msg: ReliableMessage, receiver: ID):
+        with self.__lock:
+            db = self.database
+            await db.inbox_cache_reliable_message(msg=msg, receiver=receiver)
+            self.__members.add(receiver)
+
+    def _get_users(self) -> Optional[Set[ID]]:
+        with self.__lock:
+            if len(self.__members) > 0:
+                users = self.__members
+                self.__members = set()
+                return users
+
+    # Override
+    async def process(self) -> bool:
+        database = self.database
+        messenger = self.messenger
+        if database is None or messenger is None:
+            self.warning(msg='group message distributor not ready yet')
+            return False
+        members = self._get_users()
+        if members is None:
+            return False
+        try:
+            await self._check_users(recipients=members)
+            return True
+        except Exception as error:
+            self.error(msg='failed to distribute group message for %s: %s' % (members, error))
+            return False
+
+    async def _check_users(self, recipients: Set[ID]):
+        self.info(msg='checking message for users: %s' % recipients)
+        fp = Footprint()
+        db = self.database
+        messenger = self.messenger
+        for receiver in recipients:
+            if await fp.is_vanished(identifier=receiver):
+                self.info(msg='user %s is vanished, ignore it' % receiver)
+                continue
+            messages = await db.inbox_reliable_messages(receiver=receiver)
+            for msg in messages:
+                command = ForwardContent.create(message=msg)
+                await messenger.send_content(sender=None, receiver=receiver, content=command)
+            # TODO: load all messages?
+
+
+@Singleton
+class GroupMessageHandler(Runner, Logging):
+
+    def __init__(self):
+        super().__init__(interval=Runner.INTERVAL_SLOW)
+        self.__db: Optional[Database] = None
+        self.__facebook: Optional[CommonFacebook] = None
+        self.__messenger: Optional[CommonMessenger] = None
+        # message queue
+        self.__messages: List[ReliableMessage] = []
+        self.__lock = threading.Lock()
+        # Runner.async_task(coro=self.start())
+        Runner.thread_run(runner=self)
+
+    @property
+    def database(self) -> Optional[Database]:
+        return self.__db
+
+    @database.setter
+    def database(self, db: Database):
+        self.__db = db
+
+    @property
+    def facebook(self) -> Optional[CommonFacebook]:
+        return self.__facebook
+
+    @facebook.setter
+    def facebook(self, barrack: CommonFacebook):
+        self.__facebook = barrack
+
+    @property
+    def messenger(self) -> Optional[CommonMessenger]:
+        return self.__messenger
+
+    @messenger.setter
+    def messenger(self, transceiver: CommonMessenger):
+        self.__messenger = transceiver
+
+    async def _send_content(self, content: Content, receiver: ID, priority: int = 0):
+        messenger = self.messenger
+        i_msg, r_msg = await messenger.send_content(sender=None, receiver=receiver, content=content, priority=priority)
+        return r_msg is not None
+
+    async def _fetch_group_keys(self, group: ID, sender: ID, keys: Dict[str, str]) -> Optional[Dict[str, str]]:
+        db = self.database
+        if keys is not None and len(keys) > 0:
+            await db.save_group_keys(group=group, sender=sender, keys=keys)
+        # get newest keys
+        return await db.get_group_keys(group=group, sender=sender)
+
+    def append_message(self, msg: ReliableMessage):
+        """ Add group message to waiting queue """
+        with self.__lock:
+            self.__messages.append(msg)
+
+    def next_message(self) -> Optional[ReliableMessage]:
+        with self.__lock:
+            if len(self.__messages) > 0:
+                return self.__messages.pop(0)
+
+    # Override
+    async def process(self) -> bool:
+        database = self.database
+        facebook = self.facebook
+        messenger = self.messenger
+        if database is None or facebook is None or messenger is None:
+            self.warning(msg='group message handler not ready yet')
+            return False
+        msg = self.next_message()
+        if msg is None:
+            return False
+        else:
+            receiver = msg.receiver
+            group = msg.group
+        try:
+            if receiver.is_group:
+                # group message
+                await self._split_group_message(group=receiver, msg=msg)
+            elif receiver.is_broadcast and group is not None:
+                # group command
+                await self._process_group_command(group=group, msg=msg)
+            else:
+                self.error(msg='group message error: %s (%s) %s' % (receiver, group, msg))
+            return True
+        except Exception as error:
+            self.error(msg='failed to process message: %s => %s: %s' % (msg.sender, receiver, error))
+            return False
+
+    #
+    #   Group Message
+    #
+
+    async def _split_group_message(self, group: ID, msg: ReliableMessage):
+        if group.is_broadcast:
+            self.error(msg='group error: %s' % group)
+            return False
+        else:
+            # update encrypted keys
+            sender = msg.sender
+            encrypted_keys = await self._fetch_group_keys(group=group, sender=sender, keys=msg.encrypted_keys)
+            if encrypted_keys is None:
+                return False
+        # 0. check permission
+        all_members = await self.facebook.get_members(identifier=group)
+        # TODO: check owner, administrators
+        if sender not in all_members:
+            text = 'Permission denied.'
+            receipt = TwinsHelper.create_receipt(text=text, envelope=msg.envelope, content=None, extra=None)
+            receipt.group = group
+            await self._send_content(content=receipt, receiver=sender, priority=1)
+            return False
+        else:
+            other_members = set(all_members)
+            other_members.discard(sender)
+        # 1. split for other members
+        distributor = GroupMessageDistributor()
+        group_str = str(group)
+        missed = set()
+        for member in other_members:
+            # get encrypt key with target receiver
+            target = str(member)
+            enc_key = encrypted_keys.get(target)
+            if enc_key is None:
+                missed.add(member)
+                continue
+            else:
+                self.info(msg='split group message: %s => %s (%s)' % (sender, member, group))
+            # forward message
+            info = msg.copy_dictionary()
+            info.pop('keys', None)
+            info['key'] = enc_key
+            info['receiver'] = target
+            info['group'] = group_str
+            # content = ForwardContent.create()
+            # content['forward'] = info
+            # await self._send_content(content=content, receiver=member)
+            await distributor.cache_message(msg=ReliableMessage.parse(msg=info), receiver=member)
+        # 2. query missed keys
+        key_digest = encrypted_keys.get('digest')
+        if key_digest is not None and len(missed) > 0:
+            self.warning(msg='query missed group keys: %s => %s, %s' % (sender, group, missed))
+            query = GroupKeyCommand.query(group=group, sender=sender, digest=key_digest, members=list(missed))
+            await self._send_content(content=query, receiver=sender, priority=1)
+        # TODO: 3. respond receipt
+        return True
+
+    #
+    #   Group Command
+    #
+
+    async def _process_group_command(self, group: ID, msg: ReliableMessage):
+        if group.is_broadcast:
+            self.error(msg='group error: %s' % group)
+            return False
+        messenger = self.messenger
+        responses = await messenger.process_reliable_message(msg=msg)
+        for res in responses:
+            await messenger.send_reliable_message(msg=res)
+        # TODO: forward group command to other members?
+        return True
 
 
 class ForwardContentProcessor(BaseContentProcessor):
@@ -61,95 +301,30 @@ class ForwardContentProcessor(BaseContentProcessor):
         assert isinstance(content, ForwardContent), 'forward content error: %s' % content
         secrets = content.secrets
         messenger = self.messenger
-        array = []
+        handler = GroupMessageHandler()
+        fp = Footprint()
+        await fp.touch(identifier=r_msg.sender, when=r_msg.time)
+        responses = []
         for item in secrets:
+            await fp.touch(identifier=item.sender, when=item.time)
             receiver = item.receiver
             group = item.group
             if receiver.is_group:
                 # group message
                 assert not receiver.is_broadcast, 'message error: %s => %s' % (item.sender, receiver)
-                results = self.__split_group_message(group=receiver, content=content, msg=item)
+                handler.append_message(msg=item)
+                results = []
             elif receiver.is_broadcast and group is not None:
                 # group command
                 assert not group.is_broadcast, 'message error: %s => %s (%s)' % (item.sender, receiver, group)
-                results = await self.__process_group_command(group=group, content=content, msg=item)
+                handler.append_message(msg=item)
+                results = []
             else:
-                responses = await messenger.process_reliable_message(msg=item)
-                results = forward_messages(messages=responses)
-            # NOTICE: append one result for each forwarded message here.
-            #         if result is more than one content, append an array content;
-            #         if result is empty, append an empty array content too.
+                results = await messenger.process_reliable_message(msg=item)
+            # NOTICE: append one result for each forwarded message.
             if len(results) == 1:
-                array.append(results[0])
+                res = ForwardContent.create(message=results[0])
             else:
-                array.append(ArrayContent.create(contents=results))
-        return array
-
-    async def __split_group_message(self, group: ID, content: Content, msg: ReliableMessage) -> List[Content]:
-        facebook = self.facebook
-        # 1. check members
-        members = await facebook.get_members(identifier=group)
-        sender = msg.sender
-        if sender not in members:
-            return self._respond_receipt(text='Permission denied.', content=content, envelope=msg.envelope, extra={
-                'template': 'You are not a member of group: ${ID}',
-                'replacements': {
-                    'ID': str(group),
-                }
-            })
-        recipients = members.copy()
-        # 2. deliver group message for each members
-        recipients.remove(sender)
-        return await self.__distribute_group_message(recipients=recipients, group=group, content=content, msg=msg)
-
-    async def __process_group_command(self, group: ID, content: Content, msg: ReliableMessage) -> List[Content]:
-        facebook = self.facebook
-        messenger = self.messenger
-        # 1. get members before
-        members = await facebook.get_members(identifier=group)
-        sender = msg.sender
-        if sender not in members:
-            text = 'Permission denied.'
-            return self._respond_receipt(text=text, content=content, envelope=msg.envelope, extra={
-                'template': 'You are not a member of group: ${ID}',
-                'replacements': {
-                    'ID': str(group),
-                }
-            })
-        recipients = members.copy()
-        # 2. process message
-        responses = await messenger.process_reliable_message(msg=msg)
-        # 3. get members after
-        members = await facebook.get_members(identifier=group)
-        for item in members:
-            if item not in recipients:
-                recipients.append(item)
-        # 4. deliver group message for each members
-        recipients.remove(sender)
-        array = await self.__distribute_group_message(recipients=recipients, group=group, content=content, msg=msg)
-        # 5. merge responses
-        results = forward_messages(messages=responses)
-        for item in array:
-            results.append(item)
-        return results
-
-    async def __distribute_group_message(self, recipients: List[ID], group: ID,
-                                         content: Content, msg: ReliableMessage) -> List[Content]:
-        distributor = get_distributor(messenger=self.messenger)
-        members, missing = await distributor.deliver(msg=msg, group=group, recipients=recipients)
-        # OK
-        text = 'Group messages are distributing.'
-        return self._respond_receipt(text=text, content=content, envelope=msg.envelope, extra={
-            'template': 'Group messages are distributing to members: ${members}',
-            'replacements': {
-                'members': ID.revert(array=members),
-            },
-            'missing_keys': ID.revert(array=missing)
-        })
-
-
-def get_distributor(messenger: CommonMessenger):
-    from ..receptionist import Receptionist
-    receptionist = Receptionist()
-    receptionist.messenger = messenger
-    return receptionist.distributor
+                res = ForwardContent.create(messages=results)
+            responses.append(res)
+        return responses

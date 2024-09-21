@@ -63,7 +63,7 @@ class AssistantContentProcessorCreator(ClientContentProcessorCreator):
         if msg_type == ContentType.FORWARD:
             return ForwardContentProcessor(facebook=self.facebook, messenger=self.messenger)
         # customized
-        if msg_type == ContentType.FORWARD:
+        if msg_type == ContentType.CUSTOMIZED:
             return CustomizedProcessor(facebook=self.facebook, messenger=self.messenger)
         # others
         return super().create_content_processor(msg_type=msg_type)
@@ -103,10 +103,9 @@ async def async_main():
     g_receptionist.messenger = client.messenger
     await g_receptionist.start()
     # main run loop
-    while True:
-        await Runner.sleep(seconds=1.0)
-        if not client.running:
-            break
+    await client.start()
+    await client.run()
+    # await client.stop()
     Log.warning(msg='bot stopped: %s' % client)
 
 

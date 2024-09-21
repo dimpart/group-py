@@ -34,6 +34,9 @@ from dimples.client.cpu import *
 
 from .customized import GroupKeyManager
 from .customized import CustomizedProcessor
+
+from .forward import GroupMessageDistributor
+from .forward import GroupMessageHandler
 from .forward import ForwardContentProcessor
 
 
@@ -51,6 +54,9 @@ __all__ = [
 
     'GroupKeyManager',
     'CustomizedProcessor',
+
+    'GroupMessageDistributor',
+    'GroupMessageHandler',
     'ForwardContentProcessor',
 
 ]

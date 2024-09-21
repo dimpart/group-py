@@ -25,7 +25,6 @@
 
 from typing import Optional, List, Dict
 
-from dimples import DateTime
 from dimples import ID
 from dimples import ReliableMessage
 from dimples import Content
@@ -33,67 +32,8 @@ from dimples import CustomizedContent
 from dimples import CustomizedContentProcessor
 
 from libs.utils import Singleton
+from libs.common import GroupKeyCommand
 from libs.database import Database
-
-
-class GroupKeyCommand:
-
-    APP = 'chat.dim.group'
-    MOD = 'keys'
-
-    @classmethod
-    def create(cls, action: str, group: ID, sender: ID, keys: Dict[str, str] = None) -> CustomizedContent:
-        app = cls.APP
-        mod = cls.MOD
-        act = action
-        content = CustomizedContent.create(app=app, mod=mod, act=act)
-        content.group = group
-        content['from'] = str(sender)
-        if keys is not None:
-            content['keys'] = keys
-        return content
-
-    # 1. bot -> sender: 'query'
-    # 2. sender -> bot: 'update'
-    # 3. member -> bot: 'request'
-    # 4. bot -> member: 'respond'
-
-    @classmethod
-    def query(cls, group: ID, sender: ID, digest: Optional[str], members: List[ID] = None) -> CustomizedContent:
-        """ query group keys from sender """
-        content = cls.create(action='query', group=group, sender=sender)
-        if digest is not None:
-            # current key's digest
-            content['keys'] = {
-                'digest': digest,
-            }
-        if members is not None and len(members) > 0:
-            # only query for these members
-            content['members'] = ID.revert(array=members)
-        return content
-
-    @classmethod
-    def update(cls, group: ID, sender: ID, keys: Dict[str, str]) -> CustomizedContent:
-        """ update group keys from sender """
-        if 'time' not in keys:
-            keys['time'] = str(DateTime.current_timestamp())
-        return cls.create(action='update', group=group, sender=sender, keys=keys)
-
-    @classmethod
-    def request(cls, group: ID, sender: ID, digest: Optional[str]) -> CustomizedContent:
-        """ request group key for this member """
-        content = cls.create(action='query', group=group, sender=sender)
-        if digest is not None:
-            # current key's digest
-            content['keys'] = {
-                'digest': digest,
-            }
-        return content
-
-    @classmethod
-    def respond(cls, group: ID, sender: ID, keys: Dict[str, str]) -> CustomizedContent:
-        """ respond group key to member """
-        return cls.create(action='respond', group=group, sender=sender, keys=keys)
 
 
 @Singleton
