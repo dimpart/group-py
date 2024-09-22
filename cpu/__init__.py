@@ -23,22 +23,15 @@
 # SOFTWARE.
 # ==============================================================================
 
-from .cpu import *
+from .customized import GroupKeyManager
+from .customized import CustomizedProcessor
 
-from .receptionist import Receptionist
+from .distributor import GroupMessageDistributor
+from .handler import GroupMessageHandler
+from .forward import ForwardContentProcessor
 
 
 __all__ = [
-
-    'HandshakeCommandProcessor',
-    'LoginCommandProcessor',
-
-    'HistoryCommandProcessor',
-    'GroupCommandProcessor',
-    'InviteCommandProcessor', 'ExpelCommandProcessor',
-    'JoinCommandProcessor', 'QuitCommandProcessor',
-    'ResetCommandProcessor', 'QueryCommandProcessor',
-    'ResignCommandProcessor',
 
     'GroupKeyManager',
     'CustomizedProcessor',
@@ -46,7 +39,5 @@ __all__ = [
     'GroupMessageDistributor',
     'GroupMessageHandler',
     'ForwardContentProcessor',
-
-    'Receptionist',
 
 ]

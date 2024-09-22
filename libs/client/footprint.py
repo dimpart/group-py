@@ -76,7 +76,7 @@ class Footprint(Logging):
         users = await _sort_users(users=users, facebook=facebook)
         self.__active_users = users
         if now < self.__next_time:
-            self.info(msg='active users not saved now: %s' % now)
+            self.info(msg='active users not saved now: %d' % len(users))
             return False
         # save to local storage
         self._refresh_next_time(now=now)

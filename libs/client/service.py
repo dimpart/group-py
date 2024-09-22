@@ -27,18 +27,20 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict
 
-from dimples import ID
+from dimples import EntityType, ID
 from dimples import Content, Envelope
 from dimples import TextContent, FileContent, CustomizedContent
 
 from ..utils import Runner
+from ..utils import Logging
 
+from .footprint import Footprint
 from .processor import Service
 from .request import Request
 from .emitter import Emitter
 
 
-class BaseService(Runner, Service, ABC):
+class BaseService(Runner, Service, Logging, ABC):
 
     def __init__(self):
         super().__init__(interval=Runner.INTERVAL_SLOW)
@@ -64,8 +66,10 @@ class BaseService(Runner, Service, ABC):
             self._add_request(content=content, envelope=envelope)
             return []
         elif isinstance(content, CustomizedContent):
+            app = content.application
             mod = content.module
-            if mod == 'users':
+            act = content.action
+            if app == 'chat.dim.monitor' and mod == 'users' and act == 'post':
                 self._add_request(content=content, envelope=envelope)
                 return []
 
@@ -75,13 +79,16 @@ class BaseService(Runner, Service, ABC):
         if request is None:
             # nothing to do now, return False to have a rest. ^_^
             return False
-        content = request.content
-        if isinstance(content, TextContent):
-            await self._process_text_content(content=content, request=request)
-        elif isinstance(content, FileContent):
-            await self._process_file_content(content=content, request=request)
-        elif isinstance(content, CustomizedContent):
-            await self._process_customized_content(content=content, request=request)
+        try:
+            content = request.content
+            if isinstance(content, TextContent):
+                await self._process_text_content(content=content, request=request)
+            elif isinstance(content, FileContent):
+                await self._process_file_content(content=content, request=request)
+            elif isinstance(content, CustomizedContent):
+                await self._process_customized_content(content=content, request=request)
+        except Exception as error:
+            self.error(msg='failed to process request: %s -> %s, %s' % (request.sender, request.identifier, error))
         # task done,
         # return True to process next immediately
         return True
@@ -94,8 +101,36 @@ class BaseService(Runner, Service, ABC):
     async def _process_file_content(self, content: FileContent, request: Request):
         raise NotImplemented
 
-    @abstractmethod
+    # Override
     async def _process_customized_content(self, content: CustomizedContent, request: Request):
+        app = content.application
+        mod = content.module
+        act = content.action
+        users = content.get('users')
+        if app != 'chat.dim.monitor' or mod != 'users' or act != 'post':
+            self.warning(msg='ignore customized content: %s, sender: %s' % (content, request.sender))
+            return False
+        elif not isinstance(users, List):
+            self.error(msg='users content error: %s, %s' % (content, request.envelope))
+            return False
+        else:
+            self.info(msg='received users: %s' % users)
+        fp = Footprint()
+        when = content.time
+        for item in users:
+            identifier = ID.parse(identifier=item.get('U'))
+            if identifier is None or identifier.type != EntityType.USER:
+                self.warning(msg='ignore user: %s' % item)
+                continue
+            vanished = await fp.is_vanished(identifier=identifier, now=when)
+            await fp.touch(identifier=identifier, when=when)
+            self.info(msg='invite member? %s, %s' % (vanished, identifier))
+            if vanished:
+                await self._process_new_user(identifier=identifier)
+        return True
+
+    @abstractmethod
+    async def _process_new_user(self, identifier: ID):
         raise NotImplemented
 
     #

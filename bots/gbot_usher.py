@@ -35,16 +35,15 @@ import sys
 import os
 from typing import List
 
-from dimp import FileContent, CustomizedContent
 from dimples import EntityType, ID
-from dimples import TextContent
+from dimples import TextContent, FileContent
 
 curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 
 from libs.utils import Runner
-from libs.utils import Log, Logging
+from libs.utils import Log
 
 from libs.client import ClientProcessor
 from libs.client import SharedGroupManager
@@ -61,7 +60,7 @@ g_vars = {
 }
 
 
-class GroupUsher(BaseService, Logging):
+class GroupUsher(BaseService):
 
     # list foot
     LIST_DESC = ''
@@ -144,7 +143,10 @@ class GroupUsher(BaseService, Logging):
                 name = uid.name
                 if name is None or len(name) == 0:
                     name = str(uid)
-            text += '| %s | _%s_ |\n' % (name, item.time)
+            when = str(item.time)
+            if len(when) == 19:
+                when = when[5:-3]
+            text += '| %s | _%s_ |\n' % (name, when)
             active_users.append(str(uid))
         text += '\n'
         text += 'Totally %d users.' % len(active_users)
@@ -173,7 +175,8 @@ class GroupUsher(BaseService, Logging):
             'description': self.LIST_DESC,
         })
 
-    async def __invite(self, user: ID) -> bool:
+    # Override
+    async def _process_new_user(self, identifier: ID):
         # check current group
         group = ID.parse(identifier=g_vars.get('group'))
         if group is None:
@@ -184,18 +187,16 @@ class GroupUsher(BaseService, Logging):
         if members is None or len(members) == 0:
             self.error(msg='group not ready: %s' % group)
             return False
-        assert user.type == EntityType.USER, 'user error: %s' % user
-        if user in members:
-            self.info(msg='member already exists: %s -> %s' % (user, group))
+        assert identifier.type == EntityType.USER, 'user error: %s' % identifier
+        if identifier in members:
+            self.info(msg='member already exists: %s -> %s' % (identifier, group))
             return False
-        self.info(msg='invite %s into group: %s' % (user, group))
+        self.info(msg='invite %s into group: %s' % (identifier, group))
         gm = SharedGroupManager()
-        return await gm.invite_members(members=[user], group=group)
+        return await gm.invite_members(members=[identifier], group=group)
 
     # Override
     async def _process_text_content(self, content: TextContent, request: Request):
-        fp = Footprint()
-        await fp.touch(identifier=request.sender, when=request.time)
         # get keywords as command
         keywords = content.get_str(key='keywords', default='')
         if len(keywords) == 0:
@@ -219,32 +220,9 @@ class GroupUsher(BaseService, Logging):
 
     # Override
     async def _process_file_content(self, content: FileContent, request: Request):
-        fp = Footprint()
-        await fp.touch(identifier=request.sender, when=request.time)
         if content.group is None:
             text = 'Cannot process file contents now.'
             await self.respond_text(text=text, request=request)
-
-    # Override
-    async def _process_customized_content(self, content: CustomizedContent, request: Request):
-        users = content.get('users')
-        if isinstance(users, List):
-            self.info(msg='received users: %s' % users)
-        else:
-            self.error(msg='users content error: %s, %s' % (content, request.envelope))
-            return
-        fp = Footprint()
-        when = content.time
-        for item in users:
-            identifier = ID.parse(identifier=item.get('U'))
-            if identifier is None or identifier.type != EntityType.USER:
-                self.warning(msg='ignore user: %s' % item)
-                continue
-            vanished = await fp.is_vanished(identifier=identifier, now=when)
-            await fp.touch(identifier=identifier, when=when)
-            self.info(msg='invite member? %s, %s' % (vanished, identifier))
-            if vanished:
-                await self.__invite(user=identifier)
 
 
 class BotMessageProcessor(ClientProcessor):

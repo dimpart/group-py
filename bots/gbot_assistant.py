@@ -33,13 +33,12 @@
 
 import sys
 import os
-from typing import Optional, Union, List
+from typing import Optional, Union
 
-from dimples import ReliableMessage
-from dimples import ContentType, Content
+from dimples import ID
+from dimples import FileContent, TextContent
+from dimples import ContentType
 from dimples import ContentProcessor, ContentProcessorCreator
-
-from dimples.client import ClientMessageProcessor
 
 curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
@@ -47,12 +46,31 @@ sys.path.append(rootPath)
 
 from libs.utils import Log, Runner
 from libs.client import ClientContentProcessorCreator
+from libs.client import ClientProcessor
+from libs.client import Service, Request, BaseService
 
-from engine import CustomizedProcessor
-from engine import ForwardContentProcessor
-from engine import Receptionist
+from cpu import CustomizedProcessor
+from cpu import ForwardContentProcessor
+from cpu import GroupMessageDistributor
 
 from bots.shared import start_bot
+
+
+class GroupService(BaseService):
+
+    # Override
+    async def _process_text_content(self, content: TextContent, request: Request):
+        text = content.text
+        self.info(msg='received text message from %s: "%s"' % (request.sender, text))
+
+    # Override
+    async def _process_file_content(self, content: FileContent, request: Request):
+        self.info(msg='received file from %s: %s' % (request.sender, content))
+
+    # Override
+    async def _process_new_user(self, identifier: ID):
+        distributor = GroupMessageDistributor()
+        distributor.wakeup_user(identifier=identifier)
 
 
 class AssistantContentProcessorCreator(ClientContentProcessorCreator):
@@ -69,12 +87,13 @@ class AssistantContentProcessorCreator(ClientContentProcessorCreator):
         return super().create_content_processor(msg_type=msg_type)
 
 
-class AssistantProcessor(ClientMessageProcessor):
+class AssistantProcessor(ClientProcessor):
 
     # Override
-    async def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
-        await g_receptionist.touch(identifier=r_msg.sender, when=content.time)
-        return await super().process_content(content=content, r_msg=r_msg)
+    def _create_service(self) -> Service:
+        service = GroupService()
+        Runner.thread_run(runner=service)
+        return service
 
     # Override
     def _create_creator(self) -> ContentProcessorCreator:
@@ -90,18 +109,12 @@ Log.LEVEL = Log.DEVELOP
 DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
 
 
-g_receptionist = Receptionist()
-
-
 async def async_main():
     # create & start bot
     client = await start_bot(default_config=DEFAULT_CONFIG,
                              app_name='DIM Group Assistant',
                              ans_name='assistant',
                              processor_class=AssistantProcessor)
-    # start receptionist
-    g_receptionist.messenger = client.messenger
-    await g_receptionist.start()
     # main run loop
     await client.start()
     await client.run()

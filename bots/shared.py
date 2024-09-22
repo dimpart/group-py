@@ -47,8 +47,8 @@ from libs.client import Emitter
 from libs.client import SharedGroupManager
 from libs.client import Footprint
 
-from engine import GroupKeyManager
-from engine import GroupMessageDistributor, GroupMessageHandler
+from cpu import GroupKeyManager
+from cpu import GroupMessageDistributor, GroupMessageHandler
 
 
 @Singleton

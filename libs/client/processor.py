@@ -32,6 +32,8 @@ from dimples import CommonFacebook, CommonMessenger
 
 from dimples.client import ClientMessageProcessor
 
+from .footprint import Footprint
+
 
 class Service(ABC):
     """ Service Handler """
@@ -67,6 +69,8 @@ class ClientProcessor(ClientMessageProcessor, ABC):
 
     # Override
     async def process_content(self, content: Content, r_msg: ReliableMessage) -> List[Content]:
+        fp = Footprint()
+        await fp.touch(identifier=r_msg.sender, when=content.time)
         service = self.__service
         responses = await service.handle_request(content=content, envelope=r_msg.envelope)
         if responses is None:
