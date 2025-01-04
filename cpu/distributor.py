@@ -48,8 +48,8 @@ class GroupMessageDistributor(Runner, Logging):
         self.__message_cache: Dict[ID, List[ReliableMessage]] = {}
         self.__members: Set[ID] = set()
         self.__lock = threading.Lock()
-        # Runner.async_task(coro=self.start())
-        Runner.thread_run(runner=self)
+        # auto start
+        self.start()
 
     @property
     def database(self) -> Optional[Database]:
@@ -105,6 +105,10 @@ class GroupMessageDistributor(Runner, Logging):
                 users = self.__members
                 self.__members = set()
                 return users
+
+    def start(self):
+        thr = Runner.async_thread(coro=self.run())
+        thr.start()
 
     # Override
     async def process(self) -> bool:

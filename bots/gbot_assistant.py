@@ -39,6 +39,7 @@ from dimples import ID
 from dimples import FileContent, TextContent
 from dimples import ContentType
 from dimples import ContentProcessor, ContentProcessorCreator
+from dimples import Facebook, Messenger
 
 curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
@@ -53,7 +54,8 @@ from cpu import CustomizedProcessor
 from cpu import ForwardContentProcessor
 from cpu import GroupMessageDistributor
 
-from bots.shared import start_bot
+from bots.shared import GlobalVariable
+from bots.shared import create_config, start_bot
 
 
 class GroupService(BaseService):
@@ -92,11 +94,11 @@ class AssistantProcessor(ClientProcessor):
     # Override
     def _create_service(self) -> Service:
         service = GroupService()
-        Runner.thread_run(runner=service)
+        service.start()
         return service
 
     # Override
-    def _create_creator(self) -> ContentProcessorCreator:
+    def _create_creator(self, facebook: Facebook, messenger: Messenger) -> ContentProcessorCreator:
         return AssistantContentProcessorCreator(facebook=self.facebook, messenger=self.messenger)
 
 
@@ -110,15 +112,14 @@ DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
 
 
 async def async_main():
-    # create & start bot
-    client = await start_bot(default_config=DEFAULT_CONFIG,
-                             app_name='DIM Group Assistant',
-                             ans_name='assistant',
-                             processor_class=AssistantProcessor)
-    # main run loop
-    await client.start()
-    await client.run()
-    # await client.stop()
+    # create global variable
+    shared = GlobalVariable()
+    config = await create_config(app_name='DIM Group Assistant', default_config=DEFAULT_CONFIG)
+    await shared.prepare(config=config)
+    #
+    #  Create & start the bot
+    #
+    client = await start_bot(ans_name='assistant', processor_class=AssistantProcessor)
     Log.warning(msg='bot stopped: %s' % client)
 
 

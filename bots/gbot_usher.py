@@ -51,7 +51,7 @@ from libs.client import Footprint
 from libs.client import Service, Request, BaseService
 
 from bots.shared import GlobalVariable
-from bots.shared import start_bot
+from bots.shared import create_config, start_bot
 
 
 g_vars = {
@@ -137,7 +137,7 @@ class GroupUsher(BaseService):
                 self.info(msg='skip the sender: %s' % uid)
                 continue
             # get nickname
-            visa = await facebook.get_visa(identifier=uid)
+            visa = await facebook.get_visa(user=uid)
             name = None if visa is None else visa.name
             if name is None or len(name) == 0:
                 name = uid.name
@@ -230,7 +230,7 @@ class BotMessageProcessor(ClientProcessor):
     # Override
     def _create_service(self) -> Service:
         service = GroupUsher()
-        Runner.thread_run(runner=service)
+        service.start()
         return service
 
 
@@ -244,20 +244,20 @@ DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
 
 
 async def async_main():
-    # create & start bot
-    client = await start_bot(default_config=DEFAULT_CONFIG,
-                             app_name='GroupBot: Usher',
-                             ans_name='usher',
-                             processor_class=BotMessageProcessor)
-    # set supervisors
+    # create global variable
     shared = GlobalVariable()
+    config = await create_config(app_name='GroupBot: Usher', default_config=DEFAULT_CONFIG)
+    await shared.prepare(config=config)
+    #
+    #  Set supervisors
+    #
     supervisors = shared.config.get_list(section='group', option='supervisors')
     if isinstance(supervisors, List):
         g_vars['supervisors'] = ID.convert(array=supervisors)
-    # main run loop
-    await client.start()
-    await client.run()
-    # await client.stop()
+    #
+    #  Create & start the bot
+    #
+    client = await start_bot(ans_name='usher', processor_class=BotMessageProcessor)
     Log.warning(msg='bot stopped: %s' % client)
 
 

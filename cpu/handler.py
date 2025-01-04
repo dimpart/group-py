@@ -29,7 +29,7 @@ from typing import Optional, List, Dict
 from dimples import ID, ReliableMessage
 from dimples import Content
 from dimples import CommonFacebook, CommonMessenger
-from dimples import TwinsHelper
+from dimples import BaseContentProcessor
 
 from libs.utils import Singleton
 from libs.utils import Runner
@@ -52,8 +52,8 @@ class GroupMessageHandler(Runner, Logging):
         # message queue
         self.__messages: List[ReliableMessage] = []
         self.__lock = threading.Lock()
-        # Runner.async_task(coro=self.start())
-        Runner.thread_run(runner=self)
+        # auto run
+        self.start()
 
     @property
     def database(self) -> Optional[Database]:
@@ -100,6 +100,10 @@ class GroupMessageHandler(Runner, Logging):
         with self.__lock:
             if len(self.__messages) > 0:
                 return self.__messages.pop(0)
+
+    def start(self):
+        thr = Runner.async_thread(coro=self.run())
+        thr.start()
 
     # Override
     async def process(self) -> bool:
@@ -154,7 +158,7 @@ class GroupMessageHandler(Runner, Logging):
         # TODO: check owner, administrators
         if sender not in all_members:
             text = 'Permission denied.'
-            receipt = TwinsHelper.create_receipt(text=text, envelope=msg.envelope, content=None, extra=None)
+            receipt = BaseContentProcessor.create_receipt(text=text, envelope=msg.envelope, content=None, extra=None)
             receipt.group = group
             await self._send_content(content=receipt, receiver=sender, priority=1)
             return False

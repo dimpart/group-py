@@ -29,7 +29,7 @@ from dimples import ID
 from dimples import ReliableMessage
 from dimples import Content
 from dimples import CustomizedContent
-from dimples import CustomizedContentProcessor
+from dimples.client.cpu import CustomizedContentProcessor
 
 from libs.utils import Singleton
 from libs.common import GroupKeyCommand

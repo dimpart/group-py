@@ -30,7 +30,7 @@ If the owner received ```resign``` commands in bulletin.resignations, it must up
 
 ```python
 	administrator_list = ID.revert(array=new_administrators)
-	bulletin.set_property(key="administrators", value=administrator_list);
+	bulletin.set_property(name="administrators", value=administrator_list);
 	bulletin.sign(private_key=private_key);
 ```
 

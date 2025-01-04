@@ -73,6 +73,10 @@ class BaseService(Runner, Service, Logging, ABC):
                 self._add_request(content=content, envelope=envelope)
                 return []
 
+    def start(self):
+        thr = Runner.async_thread(coro=self.run())
+        thr.start()
+
     # Override
     async def process(self) -> bool:
         request = self._next_request()

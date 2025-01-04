@@ -157,7 +157,7 @@ async def _sort_users(users: List[ActiveUser], facebook: CommonFacebook) -> List
     users = users.copy()
     for item in users:
         uid = item.identifier
-        visa = await facebook.get_visa(identifier=uid)
+        visa = await facebook.get_visa(user=uid)
         if visa is not None:
             # update with visa time
             last_time = visa.time
