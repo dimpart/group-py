@@ -192,8 +192,8 @@ class GroupUsher(BaseService):
             self.info(msg='member already exists: %s -> %s' % (identifier, group))
             return False
         self.info(msg='invite %s into group: %s' % (identifier, group))
-        gm = SharedGroupManager()
-        return await gm.invite_members(members=[identifier], group=group)
+        man = SharedGroupManager()
+        return await man.invite_group_members(members=[identifier], group=group)
 
     # Override
     async def _process_text_content(self, content: TextContent, request: Request):

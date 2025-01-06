@@ -38,8 +38,8 @@ from ..database import Database
 @Singleton
 class Footprint(Logging):
 
-    EXPIRES = 36000  # vanished after 10 hours
-    INTERVAL = 600   # save interval
+    FP_EXPIRES = 3600 * 72  # vanished after 3 days
+    INTERVAL = 600          # save interval
 
     def __init__(self):
         super().__init__()
@@ -148,7 +148,7 @@ class Footprint(Logging):
         if now is None:
             now = DateTime.now()
         last = await self._last_time(identifier=identifier, now=now)
-        return last is None or now > (last + self.EXPIRES)
+        return last is None or now > (last + self.FP_EXPIRES)
 
 
 async def _sort_users(users: List[ActiveUser], facebook: CommonFacebook) -> List[ActiveUser]:
