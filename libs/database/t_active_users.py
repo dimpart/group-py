@@ -28,7 +28,8 @@ from typing import List, Optional
 
 from dimples.utils import SharedCacheManager
 from dimples.utils import CachePool
-from dimples.database import DbInfo, DbTask
+from dimples.utils import Config
+from dimples.database import DbTask
 
 from ..common.dbi import ActiveUser, ActiveUserDBI
 from .dos import ActiveUserStorage
@@ -72,11 +73,11 @@ class UsvTask(DbTask):
 class ActiveUserTable(ActiveUserDBI):
     """ Implementations of ActiveUserDBI """
 
-    def __init__(self, info: DbInfo):
+    def __init__(self, config: Config):
         super().__init__()
         man = SharedCacheManager()
         self._cache = man.get_pool(name='dim_network')  # ID => List[ActiveUser]
-        self._dos = ActiveUserStorage(root=info.root_dir, public=info.public_dir, private=info.private_dir)
+        self._dos = ActiveUserStorage(config=config)
         self._lock = threading.Lock()
 
     def show_info(self):

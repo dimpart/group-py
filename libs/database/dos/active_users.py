@@ -25,7 +25,6 @@
 
 from typing import List
 
-from dimples.database.dos.base import template_replace
 from dimples.database.dos import Storage
 
 from ...common.dbi import ActiveUser, ActiveUserDBI
@@ -36,17 +35,16 @@ class ActiveUserStorage(Storage, ActiveUserDBI):
         Active Users
         ~~~~~~~~~~~~
 
-        file path: '.dim/private/active_users.js'
+        file path: '.dim/protected/active_users.js'
     """
-    active_users_path = '{PRIVATE}/active_users.js'
+    active_users_path = '{PROTECTED}/active_users.js'
 
     def show_info(self):
-        path = template_replace(self.active_users_path, 'PRIVATE', self._private)
+        path = self.protected_path(self.active_users_path)
         print('!!!   active users path: %s' % path)
 
     def __active_users_path(self) -> str:
-        path = self.active_users_path
-        return template_replace(path, 'PRIVATE', self._private)
+        return self.protected_path(self.active_users_path)
 
     # Override
     async def load_active_users(self) -> List[ActiveUser]:

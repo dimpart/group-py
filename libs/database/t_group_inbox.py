@@ -31,7 +31,8 @@ from dimples import ReliableMessage
 from dimples import ReliableMessageDBI
 from dimples.utils import SharedCacheManager
 from dimples.utils import CachePool
-from dimples.database import DbInfo, DbTask
+from dimples.utils import Config
+from dimples.database import DbTask
 
 from .redis import GroupInboxMessageCache
 
@@ -76,11 +77,11 @@ class MsgTask(DbTask):
 class GroupInboxMessageTable(ReliableMessageDBI):
     """ Implementations of ReliableMessageDBI """
 
-    def __init__(self, info: DbInfo):
+    def __init__(self, config: Config):
         super().__init__()
         man = SharedCacheManager()
         self._cache = man.get_pool(name='group_inbox')  # ID => List[ReliableMessages]
-        self._redis = GroupInboxMessageCache(connector=info.redis_connector)
+        self._redis = GroupInboxMessageCache(config=config)
         self._lock = threading.Lock()
 
     # noinspection PyMethodMayBeStatic

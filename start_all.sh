@@ -28,11 +28,30 @@ function title() {
     echo ""
 }
 
+
+if [[ "$*" == "restart" ]]
+then
+    launch="restart"
+    echo "========================"
+    echo "    Restarting ..."
+    echo "========================"
+else
+    launch="start"
+    echo "========================"
+    echo "    Starting ..."
+    echo "========================"
+fi
+
+
+#
+#   Service Bots
+#
+
 title "DIM Group Bot"
-restart group "bots/gbot_assistant.py"
+${launch} group "bots/gbot_assistant.py"
 
 title "DIM Receptionist"
-restart usher "bots/gbot_usher.py"
+${launch} usher "bots/gbot_usher.py"
 
 echo ""
 echo "    >>> Done <<<"
