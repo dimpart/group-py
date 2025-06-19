@@ -33,7 +33,6 @@
 
 import sys
 import os
-from typing import List
 
 from dimples import EntityType, ID
 from dimples import TextContent, FileContent
@@ -44,6 +43,7 @@ sys.path.append(rootPath)
 
 from libs.utils import Runner
 from libs.utils import Log
+from libs.utils import Config
 
 from libs.client import ClientProcessor
 from libs.client import SharedGroupManager
@@ -55,8 +55,7 @@ from bots.shared import create_config, start_bot
 
 
 g_vars = {
-    'group': None,
-    'supervisors': [],
+    'current_group': None,
 }
 
 
@@ -64,6 +63,11 @@ class GroupUsher(BaseService):
 
     # list foot
     LIST_DESC = ''
+
+    @property
+    def config(self) -> Config:
+        shared = GlobalVariable()
+        return shared.config
 
     @property
     def facebook(self):
@@ -83,7 +87,7 @@ class GroupUsher(BaseService):
         return '- Name: ***"%s"***\n- ID  : %s\n' % (name, group)
 
     async def __query_current_group(self, request: Request):
-        current = g_vars.get('group')
+        current = g_vars.get('current_group')
         if isinstance(current, ID):
             text = 'Current group is:\n%s' % await self.__group_info(group=current)
             await self.respond_markdown(text=text, request=request)
@@ -96,15 +100,14 @@ class GroupUsher(BaseService):
     async def __set_current_group(self, request: Request):
         sender = request.envelope.sender
         group = request.content.group
-        admins = g_vars['supervisors']
-        assert isinstance(admins, List), 'supervisors not found: %s' % g_vars
+        admins = await self.config.get_supervisors(facebook=self.facebook)
         if group is None:
             text = 'Call me in the group'
             await self.respond_text(text=text, request=request)
         elif sender in admins:
-            old = g_vars.get('group')
+            old = g_vars.get('current_group')
             self.warning(msg='change current group by %s: %s -> %s' % (sender, old, group))
-            g_vars['group'] = group
+            g_vars['current_group'] = group
             text = 'Current group set to:\n%s' % await self.__group_info(group=group)
             if old is not None:
                 assert isinstance(old, ID), 'old group ID error: %s' % old
@@ -178,7 +181,7 @@ class GroupUsher(BaseService):
     # Override
     async def _process_new_user(self, identifier: ID):
         # check current group
-        group = ID.parse(identifier=g_vars.get('group'))
+        group = ID.parse(identifier=g_vars.get('current_group'))
         if group is None:
             self.warning(msg='group ID not set')
             return False
@@ -240,7 +243,7 @@ class BotMessageProcessor(ClientProcessor):
 Log.LEVEL = Log.DEVELOP
 
 
-DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
+DEFAULT_CONFIG = '/etc/dim/group.ini'
 
 
 async def async_main():
@@ -248,12 +251,6 @@ async def async_main():
     shared = GlobalVariable()
     config = await create_config(app_name='GroupBot: Usher', default_config=DEFAULT_CONFIG)
     await shared.prepare(config=config)
-    #
-    #  Set supervisors
-    #
-    supervisors = shared.config.get_list(section='group', option='supervisors')
-    if isinstance(supervisors, List):
-        g_vars['supervisors'] = ID.convert(array=supervisors)
     #
     #  Create & start the bot
     #

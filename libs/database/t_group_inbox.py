@@ -29,60 +29,47 @@ from typing import List, Optional
 from dimples import ID
 from dimples import ReliableMessage
 from dimples import ReliableMessageDBI
-from dimples.utils import SharedCacheManager
 from dimples.utils import CachePool
 from dimples.utils import Config
-from dimples.database import DbTask
+from dimples.database import DbTask, DataCache
 
 from .redis import GroupInboxMessageCache
 
 
-class MsgTask(DbTask):
+class MsgTask(DbTask[ID, List[ReliableMessage]]):
 
     MEM_CACHE_EXPIRES = 360  # seconds
     MEM_CACHE_REFRESH = 128  # seconds
 
     def __init__(self, receiver: ID, limit: int,
-                 cache_pool: CachePool, redis: GroupInboxMessageCache,
-                 mutex_lock: threading.Lock):
-        super().__init__(cache_pool=cache_pool,
+                 redis: GroupInboxMessageCache,
+                 mutex_lock: threading.Lock, cache_pool: CachePool):
+        super().__init__(mutex_lock=mutex_lock, cache_pool=cache_pool,
                          cache_expires=self.MEM_CACHE_EXPIRES,
-                         cache_refresh=self.MEM_CACHE_REFRESH,
-                         mutex_lock=mutex_lock)
+                         cache_refresh=self.MEM_CACHE_REFRESH)
         self._receiver = receiver
         self._limit = limit
         self._redis = redis
 
-    # Override
+    @property  # Override
     def cache_key(self) -> ID:
         return self._receiver
 
     # Override
-    async def _load_redis_cache(self) -> Optional[List[ReliableMessage]]:
+    async def _read_data(self) -> Optional[List[ReliableMessage]]:
         return await self._redis.get_reliable_messages(receiver=self._receiver, limit=self._limit)
 
     # Override
-    async def _save_redis_cache(self, value: List[ReliableMessage]) -> bool:
-        pass
-
-    # Override
-    async def _load_local_storage(self) -> Optional[List[ReliableMessage]]:
-        pass
-
-    # Override
-    async def _save_local_storage(self, value: List[ReliableMessage]) -> bool:
+    async def _write_data(self, value: List[ReliableMessage]) -> bool:
         pass
 
 
-class GroupInboxMessageTable(ReliableMessageDBI):
+class GroupInboxMessageTable(DataCache, ReliableMessageDBI):
     """ Implementations of ReliableMessageDBI """
 
     def __init__(self, config: Config):
-        super().__init__()
-        man = SharedCacheManager()
-        self._cache = man.get_pool(name='group_inbox')  # ID => List[ReliableMessages]
+        super().__init__(pool_name='group_inbox')  # ID => List[ReliableMessages]
         self._redis = GroupInboxMessageCache(config=config)
-        self._lock = threading.Lock()
 
     # noinspection PyMethodMayBeStatic
     def show_info(self):
@@ -90,8 +77,8 @@ class GroupInboxMessageTable(ReliableMessageDBI):
 
     def _new_task(self, receiver: ID, limit: int) -> MsgTask:
         return MsgTask(receiver=receiver, limit=limit,
-                       cache_pool=self._cache, redis=self._redis,
-                       mutex_lock=self._lock)
+                       redis=self._redis,
+                       mutex_lock=self._mutex_lock, cache_pool=self._cache_pool)
 
     #
     #   ReliableMessageDBI
@@ -105,18 +92,18 @@ class GroupInboxMessageTable(ReliableMessageDBI):
 
     # Override
     async def cache_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
-        with self._lock:
+        with self.lock:
             # 1. store into redis server
             if await self._redis.save_reliable_message(msg=msg, receiver=receiver):
                 # 2. clear cache to reload
-                self._cache.erase(key=receiver)
+                self.cache.erase(key=receiver)
                 return True
 
     # Override
     async def remove_reliable_message(self, msg: ReliableMessage, receiver: ID) -> bool:
-        with self._lock:
+        with self.lock:
             # 1. remove from redis server
             if await self._redis.remove_reliable_message(msg=msg, receiver=receiver):
                 # 2. clear cache to reload
-                self._cache.erase(key=receiver)
+                self.cache.erase(key=receiver)
                 return True

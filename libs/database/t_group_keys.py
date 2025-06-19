@@ -29,77 +29,68 @@ from typing import Optional, Tuple, Dict
 from dimples import ID
 
 from dimples.utils import CachePool
-from dimples.utils import SharedCacheManager
 from dimples.common import GroupKeysDBI
 from dimples.database import GroupKeysStorage
 from dimples.database import GroupKeysCache
 from dimples.utils import Config
-from dimples.database import DbTask
+from dimples.database import DbTask, DataCache
 
 
-class PwdTask(DbTask):
-
-    MEM_CACHE_EXPIRES = 300  # seconds
-    MEM_CACHE_REFRESH = 32   # seconds
+class PwdTask(DbTask[Tuple[ID, ID], Dict[str, str]]):
 
     def __init__(self, group: ID, sender: ID,
-                 cache_pool: CachePool, redis: GroupKeysCache, storage: GroupKeysStorage,
-                 mutex_lock: threading.Lock):
-        super().__init__(cache_pool=cache_pool,
-                         cache_expires=self.MEM_CACHE_EXPIRES,
-                         cache_refresh=self.MEM_CACHE_REFRESH,
-                         mutex_lock=mutex_lock)
+                 redis: GroupKeysCache, storage: GroupKeysStorage,
+                 mutex_lock: threading.Lock, cache_pool: CachePool):
+        super().__init__(mutex_lock=mutex_lock, cache_pool=cache_pool)
         self._group = group
         self._sender = sender
         self._redis = redis
         self._dos = storage
 
-    # Override
+    @property  # Override
     def cache_key(self) -> Tuple[ID, ID]:
         return self._group, self._sender
 
     # Override
-    async def _load_redis_cache(self) -> Optional[Dict[str, str]]:
+    async def _read_data(self) -> Optional[Dict[str, str]]:
         # 1. the redis server will return None when cache not found
         # 2. when redis server return an empty array, no need to check local storage again
-        return await self._redis.get_group_keys(group=self._group, sender=self._sender)
-
-    # Override
-    async def _save_redis_cache(self, value: Dict[str, str]) -> bool:
-        return await self._redis.save_group_keys(group=self._group, sender=self._sender, keys=value)
-
-    # Override
-    async def _load_local_storage(self) -> Optional[Dict[str, str]]:
-        # 1. the local storage will return None when file not found
-        # 2. return empty array as a placeholder for the memory cache
+        keys = await self._redis.get_group_keys(group=self._group, sender=self._sender)
+        if keys is not None:
+            return keys
+        # 3. the local storage will return None when file not found
         keys = await self._dos.get_group_keys(group=self._group, sender=self._sender)
         if keys is None:
-            keys = {}  # placeholder
+            # 4. return empty dictionary as a placeholder for the memory cache
+            keys = {}
+        # 5. update redis server
+        await self._redis.save_group_keys(group=self._group, sender=self._sender, keys=keys)
         return keys
 
     # Override
-    async def _save_local_storage(self, value: Dict[str, str]) -> bool:
-        return await self._dos.save_group_keys(group=self._group, sender=self._sender, keys=value)
+    async def _write_data(self, value: Dict[str, str]) -> bool:
+        # 1. store into redis server
+        ok1 = await self._redis.save_group_keys(group=self._group, sender=self._sender, keys=value)
+        # 2. save into local storage
+        ok2 = await self._dos.save_group_keys(group=self._group, sender=self._sender, keys=value)
+        return ok1 or ok2
 
 
-class GroupKeysTable(GroupKeysDBI):
+class GroupKeysTable(DataCache, GroupKeysDBI):
     """ Implementations of GroupKeysDBI """
 
     def __init__(self, config: Config):
-        super().__init__()
-        man = SharedCacheManager()
-        self._cache = man.get_pool(name='group.keys')  # (ID, ID) => Dict
+        super().__init__(pool_name='group.keys')  # (ID, ID) => Dict
         self._redis = GroupKeysCache(config=config)
         self._dos = GroupKeysStorage(config=config)
-        self._lock = threading.Lock()
 
     def show_info(self):
         self._dos.show_info()
 
     def _new_task(self, group: ID, sender: ID) -> PwdTask:
         return PwdTask(group=group, sender=sender,
-                       cache_pool=self._cache, redis=self._redis, storage=self._dos,
-                       mutex_lock=self._lock)
+                       redis=self._redis, storage=self._dos,
+                       mutex_lock=self._mutex_lock, cache_pool=self._cache_pool)
 
     async def _merge_keys(self, group: ID, sender: ID, keys: Dict[str, str]) -> Optional[Dict[str, str]]:
         # 0. load old records

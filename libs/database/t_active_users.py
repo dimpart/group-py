@@ -26,66 +26,52 @@
 import threading
 from typing import List, Optional
 
-from dimples.utils import SharedCacheManager
 from dimples.utils import CachePool
 from dimples.utils import Config
-from dimples.database import DbTask
+from dimples.database import DbTask, DataCache
 
 from ..common.dbi import ActiveUser, ActiveUserDBI
 from .dos import ActiveUserStorage
 
 
-class UsvTask(DbTask):
+class UsvTask(DbTask[str, List[ActiveUser]]):
 
     MEM_CACHE_EXPIRES = 36000  # seconds
     MEM_CACHE_REFRESH = 128    # seconds
 
-    def __init__(self,
-                 cache_pool: CachePool, storage: ActiveUserStorage,
-                 mutex_lock: threading.Lock):
-        super().__init__(cache_pool=cache_pool,
+    def __init__(self, storage: ActiveUserStorage,
+                 mutex_lock: threading.Lock, cache_pool: CachePool):
+        super().__init__(mutex_lock=mutex_lock, cache_pool=cache_pool,
                          cache_expires=self.MEM_CACHE_EXPIRES,
-                         cache_refresh=self.MEM_CACHE_REFRESH,
-                         mutex_lock=mutex_lock)
+                         cache_refresh=self.MEM_CACHE_REFRESH)
         self._dos = storage
 
-    # Override
+    @property  # Override
     def cache_key(self) -> str:
         return 'active_users'
 
     # Override
-    async def _load_redis_cache(self) -> Optional[List[ActiveUser]]:
-        pass
-
-    # Override
-    async def _save_redis_cache(self, value: List[ActiveUser]) -> bool:
-        pass
-
-    # Override
-    async def _load_local_storage(self) -> Optional[List[ActiveUser]]:
+    async def _read_data(self) -> Optional[List[ActiveUser]]:
         return await self._dos.load_active_users()
 
     # Override
-    async def _save_local_storage(self, value: List[ActiveUser]) -> bool:
+    async def _write_data(self, value: List[ActiveUser]) -> bool:
         return await self._dos.save_active_users(users=value)
 
 
-class ActiveUserTable(ActiveUserDBI):
+class ActiveUserTable(DataCache, ActiveUserDBI):
     """ Implementations of ActiveUserDBI """
 
     def __init__(self, config: Config):
-        super().__init__()
-        man = SharedCacheManager()
-        self._cache = man.get_pool(name='dim_network')  # ID => List[ActiveUser]
+        super().__init__(pool_name='dim_network')  # ID => List[ActiveUser]
         self._dos = ActiveUserStorage(config=config)
-        self._lock = threading.Lock()
 
     def show_info(self):
         self._dos.show_info()
 
     def _new_task(self) -> UsvTask:
-        return UsvTask(cache_pool=self._cache, storage=self._dos,
-                       mutex_lock=self._lock)
+        return UsvTask(storage=self._dos,
+                       mutex_lock=self._mutex_lock, cache_pool=self._cache_pool)
 
     #
     #   ActiveUserDBI
