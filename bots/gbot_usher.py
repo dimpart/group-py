@@ -210,6 +210,7 @@ class GroupUsher(BaseService):
                     # self.error(msg='text content error: %s' % content)
                     return
         command = keywords.strip().lower()
+        self.info(msg='process keywords: "%s"' % keywords)
         # group commands
         if command == 'set current group':
             return await self.__set_current_group(request=request)

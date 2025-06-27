@@ -33,7 +33,7 @@
 
 import sys
 import os
-from typing import Optional, Union
+from typing import Optional
 
 from dimples import ID
 from dimples import FileContent, TextContent
@@ -78,7 +78,7 @@ class GroupService(BaseService):
 class AssistantContentProcessorCreator(ClientContentProcessorCreator):
 
     # Override
-    def create_content_processor(self, msg_type: Union[int, ContentType]) -> Optional[ContentProcessor]:
+    def create_content_processor(self, msg_type: str) -> Optional[ContentProcessor]:
         # forward
         if msg_type == ContentType.FORWARD:
             return ForwardContentProcessor(facebook=self.facebook, messenger=self.messenger)
@@ -108,7 +108,7 @@ class AssistantProcessor(ClientProcessor):
 Log.LEVEL = Log.DEVELOP
 
 
-DEFAULT_CONFIG = '/etc/dim_bots/config.ini'
+DEFAULT_CONFIG = '/etc/dim/group.ini'
 
 
 async def async_main():
