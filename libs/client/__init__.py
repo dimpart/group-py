@@ -29,7 +29,7 @@
 
 """
 
-from dimples.common.compat import CommonLoader as ExtensionLoader
+from dimples.common.compat import LibraryLoader
 from dimples.common import CommonArchivist as ClientArchivist
 from dimples.group import SharedGroupManager
 
@@ -51,7 +51,7 @@ from .request import Request
 
 __all__ = [
 
-    'ExtensionLoader',
+    'LibraryLoader',
 
     #
     #   Client

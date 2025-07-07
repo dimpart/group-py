@@ -36,7 +36,7 @@ from dimples.client import ClientChecker
 from libs.utils import Singleton, Config, Path
 from libs.database import Database
 
-from libs.client import ExtensionLoader
+from libs.client import LibraryLoader
 from libs.client import ClientArchivist, ClientFacebook
 from libs.client import ClientSession, ClientMessenger
 from libs.client import Terminal
@@ -61,7 +61,7 @@ class GlobalVariable:
         self.__facebook: Optional[ClientFacebook] = None
         self.__messenger: Optional[ClientMessenger] = None
         # load extensions
-        ExtensionLoader().run()
+        LibraryLoader().run()
 
     @property
     def config(self) -> Config:
@@ -155,6 +155,7 @@ class GlobalVariable:
 
     async def login(self, current_user: ID):
         facebook = self.facebook
+        archivist = facebook.archivist
         # make sure private keys exists
         sign_key = await facebook.private_key_for_visa_signature(identifier=current_user)
         msg_keys = await facebook.private_keys_for_decryption(identifier=current_user)
@@ -168,7 +169,7 @@ class GlobalVariable:
             # refresh visa
             visa = Document.parse(document=visa.copy_dictionary())
             visa.sign(private_key=sign_key)
-            await facebook.save_document(document=visa)
+            await archivist.save_document(document=visa)
         await facebook.set_current_user(user=user)
 
 

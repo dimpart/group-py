@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+#
+#   DIMP : Decentralized Instant Messaging Protocol
+#
+#                                Written in 2024 by Moky <albert.moky@gmail.com>
+#
 # ==============================================================================
 # MIT License
 #
@@ -23,26 +28,11 @@
 # SOFTWARE.
 # ==============================================================================
 
-"""
-    Common module
-    ~~~~~~~~~~~~~
-
-"""
-
-from .protocol import *
-
-from .dbi import *
+from .group import GroupKeyCommand
 
 
 __all__ = [
 
     'GroupKeyCommand',
-
-    #
-    #   Database Interface
-    #
-
-    'ActiveUser',
-    'ActiveUserDBI',
 
 ]

@@ -70,7 +70,10 @@ class ActiveUser:
             return user
         else:
             assert isinstance(user, Dict), 'active user error: %s' % user
-        identifier = ID.parse(user.get('ID'))
+        did = user.get('did')
+        if did is None:
+            did = user.get('ID')
+        identifier = ID.parse(identifier=did)
         when = DateTime.parse(user.get('time'))
         if identifier is None or when is None:
             # assert False, 'active user error: %s' % user
@@ -87,22 +90,24 @@ class ActiveUser:
         return users
 
     @classmethod
-    def revert(cls, array) -> List[Dict]:
-        users = []
-        for item in array:
+    def revert(cls, users) -> List[Dict]:
+        array = []
+        for item in users:
             if isinstance(item, ActiveUser):
                 info = {
                     'ID': str(item.identifier),
+                    'did': str(item.identifier),
                     'time': float(item.time),
                     'time_str': str(item.time),
                 }
             elif isinstance(item, Dict):
-                assert 'ID' in item and 'time' in item, 'user info error: %s' % item
+                assert 'did' in item or 'ID' in item, 'user info error: %s' % item
+                assert 'time' in item, 'user info error: %s' % item
                 info = item
             else:
                 assert False, 'user info error: %s' % item
-            users.append(info)
-        return users
+            array.append(info)
+        return array
 
 
 class ActiveUserDBI(ABC):

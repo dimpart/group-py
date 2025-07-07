@@ -58,7 +58,7 @@ class ActiveUserStorage(Storage, ActiveUserDBI):
 
     # Override
     async def save_active_users(self, users: List[ActiveUser]) -> bool:
-        array = ActiveUser.revert(array=users)
+        array = ActiveUser.revert(users=users)
         path = self.__active_users_path()
         self.info('Saving %d active users into: %s' % (len(users), path))
         return await self.write_json(container=array, path=path)

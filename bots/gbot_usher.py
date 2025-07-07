@@ -33,6 +33,7 @@
 
 import sys
 import os
+from typing import Optional
 
 from dimples import EntityType, ID
 from dimples import TextContent, FileContent
@@ -54,9 +55,9 @@ from bots.shared import GlobalVariable
 from bots.shared import create_config, start_bot
 
 
-g_vars = {
-    'current_group': None,
-}
+class Vars:
+    """ Global Vars """
+    current_group: Optional[ID] = None
 
 
 class GroupUsher(BaseService):
@@ -87,7 +88,7 @@ class GroupUsher(BaseService):
         return '- Name: ***"%s"***\n- ID  : %s\n' % (name, group)
 
     async def __query_current_group(self, request: Request):
-        current = g_vars.get('current_group')
+        current = Vars.current_group
         if isinstance(current, ID):
             text = 'Current group is:\n%s' % await self.__group_info(group=current)
             await self.respond_markdown(text=text, request=request)
@@ -100,26 +101,19 @@ class GroupUsher(BaseService):
     async def __set_current_group(self, request: Request):
         sender = request.envelope.sender
         group = request.content.group
-        admins = await self.config.get_supervisors(facebook=self.facebook)
         if group is None:
             text = 'Call me in the group'
             await self.respond_text(text=text, request=request)
-        elif sender in admins:
-            old = g_vars.get('current_group')
+        else:
+            old = Vars.current_group
             self.warning(msg='change current group by %s: %s -> %s' % (sender, old, group))
-            g_vars['current_group'] = group
+            Vars.current_group = group
             text = 'Current group set to:\n%s' % await self.__group_info(group=group)
             if old is not None:
                 assert isinstance(old, ID), 'old group ID error: %s' % old
                 text += '\n'
                 text += 'replacing the old one:\n%s' % await self.__group_info(group=old)
             await self.respond_markdown(text=text, request=request)
-            return True
-        else:
-            self.warning(msg='permission denied: %s, supervisors: %s' % (sender, admins))
-            text = 'Permission denied.'
-            await self.respond_text(text=text, request=request)
-            return False
 
     async def __show_active_users(self, request: Request):
         sender = request.sender
@@ -178,10 +172,82 @@ class GroupUsher(BaseService):
             'description': self.LIST_DESC,
         })
 
+    ADMIN_COMMANDS = [
+        'help',
+        'active users',
+        'current group',
+        'set current group',
+    ]
+
+    HELP_PROMPT = '## Admin Commands\n' \
+                  '* active users\n' \
+                  '* current group\n' \
+                  '* set current group\n'
+
+    async def _process_admin_command(self, command: str, request: Request):
+        sender = request.envelope.sender
+        # check permissions before executing command
+        supervisors = await self.config.get_supervisors(facebook=self.facebook)
+        if sender not in supervisors:
+            self.warning(msg='permission denied: "%s", sender: %s' % (command, sender))
+            text = 'Forbidden\n'
+            text += '\n----\n'
+            text += 'Permission Denied'
+            return await self.respond_markdown(text=text, request=request)
+        elif command == 'help':
+            #
+            #  usages
+            #
+            await self.respond_markdown(text=self.HELP_PROMPT, request=request)
+        #
+        #  group commands
+        #
+        if command == 'set current group':
+            #
+            #  change current group
+            #
+            return await self.__set_current_group(request=request)
+        elif command == 'current group':
+            #
+            #  show current group
+            #
+            return await self.__query_current_group(request=request)
+        elif command == 'active users':
+            #
+            #  show recently active users
+            #
+            return await self.__show_active_users(request=request)
+
+    # Override
+    async def _process_text_content(self, content: TextContent, request: Request):
+        # get keywords as command
+        keywords = content.get_str(key='keywords', default='')
+        if len(keywords) == 0:
+            keywords = content.get_str(key='title', default='')
+            if len(keywords) == 0:
+                keywords = await request.get_text(facebook=self.facebook)
+                if keywords is None:
+                    # self.error(msg='text content error: %s' % content)
+                    return
+        self.info(msg='process keywords: "%s"' % keywords)
+        command = keywords.strip().lower()
+        if command in self.ADMIN_COMMANDS:
+            # group commands
+            await self._process_admin_command(command=command, request=request)
+        else:
+            text = 'Unexpected command: "%s"' % keywords
+            await self.respond_text(text=text, request=request)
+
+    # Override
+    async def _process_file_content(self, content: FileContent, request: Request):
+        if content.group is None:
+            text = 'Cannot process file contents now.'
+            await self.respond_text(text=text, request=request)
+
     # Override
     async def _process_new_user(self, identifier: ID):
         # check current group
-        group = ID.parse(identifier=g_vars.get('current_group'))
+        group = Vars.current_group
         if group is None:
             self.warning(msg='group ID not set')
             return False
@@ -197,36 +263,6 @@ class GroupUsher(BaseService):
         self.info(msg='invite %s into group: %s' % (identifier, group))
         man = SharedGroupManager()
         return await man.invite_group_members(members=[identifier], group=group)
-
-    # Override
-    async def _process_text_content(self, content: TextContent, request: Request):
-        # get keywords as command
-        keywords = content.get_str(key='keywords', default='')
-        if len(keywords) == 0:
-            keywords = content.get_str(key='title', default='')
-            if len(keywords) == 0:
-                keywords = await request.get_text(facebook=self.facebook)
-                if keywords is None:
-                    # self.error(msg='text content error: %s' % content)
-                    return
-        command = keywords.strip().lower()
-        self.info(msg='process keywords: "%s"' % keywords)
-        # group commands
-        if command == 'set current group':
-            return await self.__set_current_group(request=request)
-        elif command == 'current group':
-            return await self.__query_current_group(request=request)
-        elif command == 'active users':
-            return await self.__show_active_users(request=request)
-        else:
-            text = 'Unexpected command: "%s"' % keywords
-            await self.respond_text(text=text, request=request)
-
-    # Override
-    async def _process_file_content(self, content: FileContent, request: Request):
-        if content.group is None:
-            text = 'Cannot process file contents now.'
-            await self.respond_text(text=text, request=request)
 
 
 class BotMessageProcessor(ClientProcessor):
