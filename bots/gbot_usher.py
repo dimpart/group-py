@@ -174,13 +174,11 @@ class GroupUsher(BaseService):
 
     ADMIN_COMMANDS = [
         'help',
-        'active users',
         'current group',
         'set current group',
     ]
 
     HELP_PROMPT = '## Admin Commands\n' \
-                  '* active users\n' \
                   '* current group\n' \
                   '* set current group\n'
 
@@ -198,7 +196,7 @@ class GroupUsher(BaseService):
             #
             #  usages
             #
-            await self.respond_markdown(text=self.HELP_PROMPT, request=request)
+            return await self.respond_markdown(text=self.HELP_PROMPT, request=request)
         #
         #  group commands
         #
@@ -212,11 +210,6 @@ class GroupUsher(BaseService):
             #  show current group
             #
             return await self.__query_current_group(request=request)
-        elif command == 'active users':
-            #
-            #  show recently active users
-            #
-            return await self.__show_active_users(request=request)
 
     # Override
     async def _process_text_content(self, content: TextContent, request: Request):
@@ -234,6 +227,11 @@ class GroupUsher(BaseService):
         if command in self.ADMIN_COMMANDS:
             # group commands
             await self._process_admin_command(command=command, request=request)
+        elif command == 'active users':
+            #
+            #  show recently active users
+            #
+            return await self.__show_active_users(request=request)
         else:
             text = 'Unexpected command: "%s"' % keywords
             await self.respond_text(text=text, request=request)
