@@ -33,7 +33,7 @@
 
 import sys
 import os
-from typing import Optional
+from typing import Optional, List
 
 from dimples import EntityType, ID
 from dimples import TextContent, FileContent
@@ -74,6 +74,11 @@ class GroupUsher(BaseService):
     def facebook(self):
         shared = GlobalVariable()
         return shared.facebook
+
+    async def get_supervisors(self) -> List[ID]:
+        config = self.config
+        facebook = self.facebook
+        return await config.get_supervisors(facebook=facebook)
 
     async def __group_info(self, group: ID) -> str:
         """ build group info """
@@ -173,7 +178,6 @@ class GroupUsher(BaseService):
         })
 
     ADMIN_COMMANDS = [
-        'help',
         'current group',
         'set current group',
     ]
@@ -182,21 +186,27 @@ class GroupUsher(BaseService):
                   '* current group\n' \
                   '* set current group\n'
 
+    async def _help_info(self, supervisors: List[ID]) -> str:
+        facebook = self.facebook
+        text = '## Supervisors\n'
+        for did in supervisors:
+            name = await facebook.get_name(identifier=did)
+            if name is None:
+                text += '* %s\n' % did
+                continue
+            text += '* "%s" - %s\n' % (name, did)
+        return '%s\n%s' % (self.HELP_PROMPT, text)
+
     async def _process_admin_command(self, command: str, request: Request):
         sender = request.envelope.sender
         # check permissions before executing command
-        supervisors = await self.config.get_supervisors(facebook=self.facebook)
+        supervisors = await self.get_supervisors()
         if sender not in supervisors:
             self.warning(msg='permission denied: "%s", sender: %s' % (command, sender))
             text = 'Forbidden\n'
             text += '\n----\n'
             text += 'Permission Denied'
             return await self.respond_markdown(text=text, request=request)
-        elif command == 'help':
-            #
-            #  usages
-            #
-            return await self.respond_markdown(text=self.HELP_PROMPT, request=request)
         #
         #  group commands
         #
@@ -214,25 +224,37 @@ class GroupUsher(BaseService):
     # Override
     async def _process_text_content(self, content: TextContent, request: Request):
         # get keywords as command
-        keywords = content.get_str(key='keywords', default='')
-        if len(keywords) == 0:
-            keywords = content.get_str(key='title', default='')
-            if len(keywords) == 0:
+        keywords = content.get_str(key='keywords')
+        if keywords is None or len(keywords) == 0:
+            keywords = content.get_str(key='title')
+            if keywords is None or len(keywords) == 0:
                 keywords = await request.get_text(facebook=self.facebook)
                 if keywords is None:
-                    # self.error(msg='text content error: %s' % content)
+                    self.error(msg='text content error: %s' % content)
                     return
         self.info(msg='process keywords: "%s"' % keywords)
-        command = keywords.strip().lower()
-        if command in self.ADMIN_COMMANDS:
-            # group commands
+        supervisors = await self.get_supervisors()
+        command = keywords.strip()
+        if command == 'help':
+            #
+            #  usages
+            #
+            text = await self._help_info(supervisors=supervisors)
+            await self.respond_markdown(text=text, request=request)
+        elif command in self.ADMIN_COMMANDS:
+            #
+            #  group commands
+            #
             await self._process_admin_command(command=command, request=request)
         elif command == 'active users':
             #
             #  show recently active users
             #
-            return await self.__show_active_users(request=request)
+            await self.__show_active_users(request=request)
         else:
+            #
+            #  error
+            #
             text = 'Unexpected command: "%s"' % keywords
             await self.respond_text(text=text, request=request)
 
