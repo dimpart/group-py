@@ -34,10 +34,10 @@ from dimples import BaseContentProcessor
 from libs.utils import Singleton
 from libs.utils import Runner
 from libs.utils import Logging
-from libs.common import GroupKeyCommand
-from libs.database import Database
+from libs.common import GroupKeys
 from libs.client import Footprint
 
+from .customized import GroupKeyManager
 from .distributor import GroupMessageDistributor
 
 
@@ -46,7 +46,6 @@ class GroupMessageHandler(Runner, Logging):
 
     def __init__(self):
         super().__init__(interval=Runner.INTERVAL_SLOW)
-        self.__db: Optional[Database] = None
         self.__facebook: Optional[CommonFacebook] = None
         self.__messenger: Optional[CommonMessenger] = None
         # message queue
@@ -56,12 +55,8 @@ class GroupMessageHandler(Runner, Logging):
         self.start()
 
     @property
-    def database(self) -> Optional[Database]:
-        return self.__db
-
-    @database.setter
-    def database(self, db: Database):
-        self.__db = db
+    def database(self) -> GroupKeyManager:
+        return GroupKeyManager()
 
     @property
     def facebook(self) -> Optional[CommonFacebook]:
@@ -89,7 +84,7 @@ class GroupMessageHandler(Runner, Logging):
         if keys is not None and len(keys) > 0:
             await db.save_group_keys(group=group, sender=sender, keys=keys)
         # get newest keys
-        return await db.get_group_keys(group=group, sender=sender)
+        return await db.load_group_keys(group=group, sender=sender)
 
     def append_message(self, msg: ReliableMessage):
         """ Add group message to waiting queue """
@@ -107,10 +102,9 @@ class GroupMessageHandler(Runner, Logging):
 
     # Override
     async def process(self) -> bool:
-        database = self.database
         facebook = self.facebook
         messenger = self.messenger
-        if database is None or facebook is None or messenger is None:
+        if facebook is None or messenger is None:
             self.warning(msg='group message handler not ready yet')
             return False
         msg = self.next_message()
@@ -153,7 +147,9 @@ class GroupMessageHandler(Runner, Logging):
             encrypted_keys = await self._fetch_group_keys(group=group, sender=sender, keys=msg.encrypted_keys)
             if encrypted_keys is None:
                 return False
-        # 0. check permission
+        #
+        #  0. check permission
+        #
         all_members = await self.facebook.get_members(identifier=group)
         # TODO: check owner, administrators
         if sender not in all_members:
@@ -165,7 +161,9 @@ class GroupMessageHandler(Runner, Logging):
         else:
             other_members = set(all_members)
             other_members.discard(sender)
-        # 1. split for other members
+        #
+        #  1. split for other members
+        #
         distributor = GroupMessageDistributor()
         group_str = str(group)
         missed = set()
@@ -190,13 +188,27 @@ class GroupMessageHandler(Runner, Logging):
             r_msg = ReliableMessage.parse(msg=info)
             assert r_msg is not None, 'message error: %s' % info
             await distributor.cache_message(msg=r_msg, receiver=member)
-        # 2. query missed keys
+        #
+        #  2. query missed keys
+        #
         key_digest = encrypted_keys.get('digest')
         if key_digest is not None and len(missed) > 0:
             self.warning(msg='query missed group keys: %s => %s, %s' % (sender, group, missed))
-            query = GroupKeyCommand.query(group=group, sender=sender, digest=key_digest, members=list(missed))
+            query = GroupKeys.query_group_keys(group=group, sender=sender, digest=key_digest, members=list(missed))
             await self._send_content(content=query, receiver=sender, priority=1)
-        # TODO: 3. respond receipt
+        #
+        #  3. respond receipt
+        #
+        text = 'Group message delivering.'
+        receipt = BaseContentProcessor.create_receipt(text=text, envelope=msg.envelope, content=None, extra={
+            'template': 'Group message split for ${count}/${total} member(s).',
+            'replacements': {
+                'count': str(len(other_members) - len(missed)),
+                'total': str(len(other_members)),
+            }
+        })
+        receipt.group = group
+        await self._send_content(content=receipt, receiver=sender, priority=1)
         return True
 
     #

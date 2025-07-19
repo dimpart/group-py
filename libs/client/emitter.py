@@ -25,7 +25,7 @@
 
 from typing import Optional, Tuple, Dict
 
-from dimsdk import EncodeAlgorithms
+from dimples import EncodeAlgorithms
 from dimples import TransportableData
 from dimples import EncryptKey, ID
 from dimples import InstantMessage, ReliableMessage

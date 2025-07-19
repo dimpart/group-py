@@ -29,10 +29,12 @@ from dimples import ID
 from dimples import ReliableMessage
 from dimples import Content
 from dimples import CustomizedContent
+from dimples import Facebook, Messenger
+from dimples.client.cpu import CustomizedContentHandler, BaseCustomizedHandler
 from dimples.client.cpu import CustomizedContentProcessor
 
 from libs.utils import Singleton
-from libs.common import GroupKeyCommand
+from libs.common import GroupKeys
 from libs.database import Database
 
 
@@ -54,6 +56,31 @@ class GroupKeyManager:
     async def save_group_keys(self, group: ID, sender: ID, keys: Dict[str, str]) -> bool:
         db = self.database
         assert db is not None, 'database not set yet'
+        #
+        #  1. get old keys
+        #
+        old_keys = await db.get_group_keys(group=group, sender=sender)
+        if old_keys is not None:
+            digest = old_keys.get('digest')
+            if digest is not None and digest == keys.get('digest'):
+                #
+                #  2. digest matched, merge keys
+                #
+                cnt = 0
+                for k in keys:
+                    if k == 'digest':
+                        continue
+                    else:
+                        cnt += 1
+                    old_keys[k] = keys[k]
+                if cnt == 0:
+                    # nothing changed
+                    return False
+                # update new keys
+                keys = old_keys
+        #
+        #  3. save new keys
+        #
         return await db.save_group_keys(group=group, sender=sender, keys=keys)
 
     async def load_group_keys(self, group: ID, sender: ID) -> Optional[Dict[str, str]]:
@@ -69,28 +96,20 @@ class GroupKeyManager:
         return keys.get(str(member))
 
 
-class CustomizedProcessor(CustomizedContentProcessor):
+class GroupKeyHandler(BaseCustomizedHandler):
+
+    # noinspection PyMethodMayBeStatic
+    def matches(self, app: str, mod: str) -> bool:
+        return app == GroupKeys.APP and mod == GroupKeys.MOD
 
     # Override
-    def _filter(self, app: str, content: CustomizedContent, msg: ReliableMessage) -> Optional[List[Content]]:
-        if app == GroupKeyCommand.APP:
-            # app == 'chat.dim.group'
-            return None
-        # not supported
-        return super()._filter(app=app, content=content, msg=msg)
-
-    # Override
-    async def handle_action(self, act: str, sender: ID,
-                            content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
-        if content.module != GroupKeyCommand.MOD:
-            return await super().handle_action(act=act, sender=sender, content=content, msg=msg)
+    async def handle_action(self, act: str, sender: ID, content: CustomizedContent,
+                            msg: ReliableMessage) -> List[Content]:
         group = content.group
-        if group is None:
-            text = 'Group content error.'
-            return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
+        assert group is not None, 'group command error: %s, sender: %s' % (content, sender)
         # app = 'chat.dim.group'
         # mod = 'keys'
-        if act == 'update':
+        if act == GroupKeys.ACT_UPDATE:  # 'update'
             # encrypted group keys from sender:
             # {
             #   '{MEMBER_1}': '{ENCRYPTED_KEY}',
@@ -99,17 +118,19 @@ class CustomizedProcessor(CustomizedContentProcessor):
             #   'digest': '{KEY_DIGEST}'
             # }
             return await self._update_group_keys(group=group, sender=sender, content=content, msg=msg)
-        elif act == 'query':
+        elif act == GroupKeys.ACT_REQUEST:  # 'request'
             # load group keys with direction: sender -> group
             # get the encrypted key with member ID
-            return await self._query_group_key(group=group, member=sender, content=content, msg=msg)
+            return await self._request_group_key(group=group, member=sender, content=content, msg=msg)
         else:
             # error
             text = 'Action not supported: %s.' % act
             return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
 
+    # Step 2. sender -> bot
     async def _update_group_keys(self, group: ID, sender: ID,
                                  content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
+        """ Process 'update' command from group message sender """
         db = GroupKeyManager()
         keys = content.get('keys')
         if not isinstance(keys, Dict):
@@ -121,8 +142,10 @@ class CustomizedProcessor(CustomizedContentProcessor):
         # respond
         return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
 
-    async def _query_group_key(self, group: ID, member: ID,
-                               content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
+    # Step 3. member -> bot
+    async def _request_group_key(self, group: ID, member: ID,
+                                 content: CustomizedContent, msg: ReliableMessage) -> List[Content]:
+        """ Process 'request' command from group member """
         key_sender = ID.parse(identifier=content.get('from'))
         if key_sender is None:
             text = 'Failed to get group keys sender.'
@@ -135,14 +158,37 @@ class CustomizedProcessor(CustomizedContentProcessor):
         else:
             assert isinstance(keys, Dict), 'group keys error: %s' % keys
         # check group key
-        encrypted_key = keys.get(str(member))
-        if encrypted_key is None:
+        encrypted_keys = keys.get(str(member))
+        if encrypted_keys is None:
             text = 'Failed to get group key.'
             return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
         # build respond
-        res = GroupKeyCommand.respond(group=group, sender=key_sender, keys={
-            str(member): encrypted_key,
-            'digest': keys.get('digest'),
-            'time': keys.get('time'),
-        })
+        digest = keys.get('digest')
+        res = GroupKeys.respond_group_key(group=group, sender=key_sender, member=member,
+                                          encoded_key=encrypted_keys, digest=digest)
         return [res]
+
+
+class CustomizedProcessor(CustomizedContentProcessor):
+
+    def __init__(self, facebook: Facebook, messenger: Messenger):
+        super().__init__(facebook=facebook, messenger=messenger)
+        self.__group_keys_handler = self._create_group_keys_handler(facebook=facebook, messenger=messenger)
+
+    # noinspection PyMethodMayBeStatic
+    def _create_group_keys_handler(self, facebook: Facebook, messenger: Messenger) -> GroupKeyHandler:
+        return GroupKeyHandler(facebook=facebook, messenger=messenger)
+
+    @property  # protected
+    def group_keys_handler(self) -> GroupKeyHandler:
+        return self.__group_keys_handler
+
+    # Override
+    def _filter(self, app: str, mod: str,
+                content: CustomizedContent, msg: ReliableMessage) -> Optional[CustomizedContentHandler]:
+        if content.group is not None:
+            handler = self.group_keys_handler
+            if handler.matches(app=app, mod=mod):
+                return handler
+        # not supported
+        return super()._filter(app=app, mod=mod, content=content, msg=msg)

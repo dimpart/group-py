@@ -29,14 +29,15 @@
 
 """
 
-from .protocol import *
+from dimples import GroupHistory, GroupKeys
 
 from .dbi import *
 
 
 __all__ = [
 
-    'GroupKeyCommand',
+    'GroupHistory',
+    'GroupKeys',
 
     #
     #   Database Interface

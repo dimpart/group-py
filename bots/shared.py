@@ -144,7 +144,6 @@ class GlobalVariable:
         g_man.facebook = facebook
         # set for group message handler
         gm_han = GroupMessageHandler()
-        gm_han.database = database
         gm_han.facebook = facebook
         # set for group message handlers
         gm_dis = GroupMessageDistributor()
