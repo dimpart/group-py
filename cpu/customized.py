@@ -29,9 +29,7 @@ from dimples import ID
 from dimples import ReliableMessage
 from dimples import Content
 from dimples import CustomizedContent
-from dimples import Facebook, Messenger
-from dimples.client.cpu import CustomizedContentHandler, BaseCustomizedHandler
-from dimples.client.cpu import CustomizedContentProcessor
+from dimples import BaseCustomizedHandler
 
 from libs.utils import Singleton
 from libs.common import GroupKeys
@@ -123,9 +121,8 @@ class GroupKeyHandler(BaseCustomizedHandler):
             # get the encrypted key with member ID
             return await self._request_group_key(group=group, member=sender, content=content, msg=msg)
         else:
-            # error
-            text = 'Action not supported: %s.' % act
-            return self._respond_receipt(text=text, content=content, envelope=msg.envelope)
+            # action not supported
+            return await super().handle_action(act=act, sender=sender, content=content, msg=msg)
 
     # Step 2. sender -> bot
     async def _update_group_keys(self, group: ID, sender: ID,
@@ -167,28 +164,3 @@ class GroupKeyHandler(BaseCustomizedHandler):
         res = GroupKeys.respond_group_key(group=group, sender=key_sender, member=member,
                                           encoded_key=encrypted_keys, digest=digest)
         return [res]
-
-
-class CustomizedProcessor(CustomizedContentProcessor):
-
-    def __init__(self, facebook: Facebook, messenger: Messenger):
-        super().__init__(facebook=facebook, messenger=messenger)
-        self.__group_keys_handler = self._create_group_keys_handler(facebook=facebook, messenger=messenger)
-
-    # noinspection PyMethodMayBeStatic
-    def _create_group_keys_handler(self, facebook: Facebook, messenger: Messenger) -> GroupKeyHandler:
-        return GroupKeyHandler(facebook=facebook, messenger=messenger)
-
-    @property  # protected
-    def group_keys_handler(self) -> GroupKeyHandler:
-        return self.__group_keys_handler
-
-    # Override
-    def _filter(self, app: str, mod: str,
-                content: CustomizedContent, msg: ReliableMessage) -> Optional[CustomizedContentHandler]:
-        if content.group is not None:
-            handler = self.group_keys_handler
-            if handler.matches(app=app, mod=mod):
-                return handler
-        # not supported
-        return super()._filter(app=app, mod=mod, content=content, msg=msg)

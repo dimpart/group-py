@@ -37,6 +37,7 @@ from typing import Optional, List
 
 from dimples import EntityType, ID
 from dimples import TextContent, FileContent
+from dimples import CustomizedContent
 
 curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
@@ -263,6 +264,25 @@ class GroupUsher(BaseService):
         if content.group is None:
             text = 'Cannot process file contents now.'
             await self.respond_text(text=text, request=request)
+
+    # Override
+    async def _process_customized_content(self, content: CustomizedContent, request: Request):
+        app = content.application
+        mod = content.module
+        act = content.action
+        if app == 'chat.dim.session':
+            if mod == 'users' and act == 'request':
+                #
+                #  show recently active users
+                #
+                await self.__show_active_users(request=request)
+            else:
+                # error
+                sender = request.envelope.sender
+                self.error(msg='content error: app="%s" mod="%s" act="%s", sender: %s' % (app, mod, act, sender))
+        else:
+            # app == 'chat.dim.monitor' and mod == 'users' and act == 'post'
+            await super()._process_customized_content(content=content, request=request)
 
     # Override
     async def _process_new_user(self, identifier: ID):

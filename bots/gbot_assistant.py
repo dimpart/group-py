@@ -40,6 +40,7 @@ from dimples import FileContent, TextContent
 from dimples import ContentType
 from dimples import ContentProcessor, ContentProcessorCreator
 from dimples import Facebook, Messenger
+from dimples import GroupKeys
 
 curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
@@ -50,7 +51,7 @@ from libs.client import ClientContentProcessorCreator
 from libs.client import ClientProcessor
 from libs.client import Service, Request, BaseService
 
-from cpu import CustomizedProcessor
+from cpu import GroupKeyHandler
 from cpu import ForwardContentProcessor
 from cpu import GroupMessageDistributor
 
@@ -78,13 +79,18 @@ class GroupService(BaseService):
 class AssistantContentProcessorCreator(ClientContentProcessorCreator):
 
     # Override
+    def _create_customized_content_processor(self, facebook: Facebook, messenger: Messenger):  # AppCustomizedProcessor:
+        cpu = super()._create_customized_content_processor(facebook=facebook, messenger=messenger)
+        # 'chat.dim.group:keys'
+        handler = GroupKeyHandler(facebook=facebook, messenger=messenger)
+        cpu.set_handler(app=GroupKeys.APP, mod=GroupKeys.MOD, handler=handler)
+        return cpu
+
+    # Override
     def create_content_processor(self, msg_type: str) -> Optional[ContentProcessor]:
         # forward
-        if msg_type == ContentType.FORWARD:
+        if msg_type == ContentType.FORWARD or msg_type == 'forward':
             return ForwardContentProcessor(facebook=self.facebook, messenger=self.messenger)
-        # customized
-        if msg_type == ContentType.CUSTOMIZED:
-            return CustomizedProcessor(facebook=self.facebook, messenger=self.messenger)
         # others
         return super().create_content_processor(msg_type=msg_type)
 

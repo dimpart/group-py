@@ -23,8 +23,7 @@
 # SOFTWARE.
 # ==============================================================================
 
-from .customized import GroupKeyManager
-from .customized import CustomizedProcessor
+from .customized import GroupKeyManager, GroupKeyHandler
 
 from .distributor import GroupMessageDistributor
 from .handler import GroupMessageHandler
@@ -33,8 +32,7 @@ from .forward import ForwardContentProcessor
 
 __all__ = [
 
-    'GroupKeyManager',
-    'CustomizedProcessor',
+    'GroupKeyManager', 'GroupKeyHandler',
 
     'GroupMessageDistributor',
     'GroupMessageHandler',
