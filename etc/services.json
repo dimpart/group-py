@@ -1,0 +1,17 @@
+{
+  "services": [
+    {
+      "type": "UserList",
+      "did": "usher@2wtScvzSouByJm8v7Whbuui1YLZPBHT6wv",
+      "app": "chat.dim.session",
+      "mod": "users",
+
+      "keywords": "active users",
+
+      "title": "Call Me Maybe",
+      "subtitle": "Don't be shy",
+      "icon": "https://p3fx.kgimg.com/stdmusic/20170729/20170729190817433154.jpg"
+    }
+  ]
+
+}

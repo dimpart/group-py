@@ -33,8 +33,9 @@
 
 import sys
 import os
-from typing import Optional, List
+from typing import Optional, List, Dict
 
+from dimples import DateTime, Converter
 from dimples import EntityType, ID
 from dimples import TextContent, FileContent
 from dimples import CustomizedContent
@@ -44,7 +45,7 @@ rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 
 from libs.utils import Runner
-from libs.utils import Log
+from libs.utils import Log, Logging
 from libs.utils import Config
 
 from libs.client import ClientProcessor
@@ -56,9 +57,78 @@ from bots.shared import GlobalVariable
 from bots.shared import create_config, start_bot
 
 
-class Vars:
-    """ Global Vars """
-    current_group: Optional[ID] = None
+class Freshman(Logging):
+
+    def __init__(self):
+        super().__init__()
+        self.__group: Optional[ID] = None
+        self.__start_time = DateTime.now()
+        self.__new_users = {}  # ID -> DateTime
+
+    @property
+    def current_group(self) -> Optional[ID]:
+        return self.__group
+
+    @current_group.setter
+    def current_group(self, gid):
+        self.__group = gid
+
+    @property
+    def new_users(self) -> Dict:
+        return self.__new_users.copy()
+
+    @property
+    def facebook(self):
+        shared = GlobalVariable()
+        return shared.facebook
+
+    def _check_user(self, user: ID, group: ID) -> bool:
+        facebook = self.facebook
+        # check user type
+        if user.type != EntityType.USER:
+            self.error(msg='user error: %s' % user)
+            return False
+        # check user time
+        visa = await facebook.get_visa(user=user)
+        if visa is None:
+            self.error(msg='user not ready: %s' % user)
+        else:
+            created_time = visa.get_property(name='created_time')
+            created_time = Converter.get_datetime(value=created_time)
+            if created_time is None:
+                self.error(msg='user visa error: %s' % visa)
+            elif self.__start_time.before(other=created_time):
+                self.info(msg='ignore old user: %s' % user)
+                return False
+        # check members
+        members = await facebook.get_members(identifier=group)
+        if members is None or len(members) == 0:
+            self.error(msg='group not ready: %s' % group)
+            return False
+        if user in members:
+            self.info(msg='member already exists: %s -> %s' % (user, group))
+            return False
+        # OK
+        return True
+
+    def process_new_user(self, identifier: ID) -> bool:
+        now = DateTime.now()
+        when = self.__new_users.get(identifier)
+        if when is not None:
+            self.__new_users[identifier] = now
+        # check current group
+        group = self.current_group
+        if group is None:
+            self.warning(msg='group ID not set')
+            return False
+        if self._check_user(user=identifier, group=group):
+            self.info(msg='invite %s into group: %s' % (identifier, group))
+            self.__new_users[identifier] = now
+            man = SharedGroupManager()
+            return await man.invite_group_members(members=[identifier], group=group)
+
+
+g_vars = Freshman()
 
 
 class GroupUsher(BaseService):
@@ -94,7 +164,7 @@ class GroupUsher(BaseService):
         return '- Name: ***"%s"***\n- ID  : %s\n' % (name, group)
 
     async def __query_current_group(self, request: Request):
-        current = Vars.current_group
+        current = g_vars.current_group
         if isinstance(current, ID):
             text = 'Current group is:\n%s' % await self.__group_info(group=current)
             await self.respond_markdown(text=text, request=request)
@@ -111,15 +181,40 @@ class GroupUsher(BaseService):
             text = 'Call me in the group'
             await self.respond_text(text=text, request=request)
         else:
-            old = Vars.current_group
+            old = g_vars.current_group
             self.warning(msg='change current group by %s: %s -> %s' % (sender, old, group))
-            Vars.current_group = group
+            g_vars.current_group = group
             text = 'Current group set to:\n%s' % await self.__group_info(group=group)
             if old is not None:
                 assert isinstance(old, ID), 'old group ID error: %s' % old
                 text += '\n'
                 text += 'replacing the old one:\n%s' % await self.__group_info(group=old)
             await self.respond_markdown(text=text, request=request)
+
+    async def __show_new_users(self, request: Request):
+        facebook = self.facebook
+        new_users = g_vars.new_users
+        count = len(new_users)
+        # build text
+        text = '## New Users\n'
+        text += '| Name | Last Time |\n'
+        text += '|------|-----------|\n'
+        for uid in new_users:
+            # get nickname
+            visa = await facebook.get_visa(user=uid)
+            name = None if visa is None else visa.name
+            if name is None or len(name) == 0:
+                name = uid.name
+                if name is None or len(name) == 0:
+                    name = str(uid)
+            when = new_users.get(uid)
+            text += '| %s | _%s_ |\n' % (name, when)
+        text += '\n'
+        text += 'Totally %d new users.' % count
+        self.info(msg='respond %d new users, %s' % (count, request.identifier))
+        return await self.respond_text(text=text, request=request, extra={
+            'format': 'markdown',
+        })
 
     async def __show_active_users(self, request: Request):
         sender = request.sender
@@ -247,6 +342,11 @@ class GroupUsher(BaseService):
             #  group commands
             #
             await self._process_admin_command(command=command, request=request)
+        elif command == 'new users':
+            #
+            #  show recently registered users
+            #
+            await self.__show_new_users(request=request)
         elif command == 'active users':
             #
             #  show recently active users
@@ -286,23 +386,10 @@ class GroupUsher(BaseService):
 
     # Override
     async def _process_new_user(self, identifier: ID):
-        # check current group
-        group = Vars.current_group
-        if group is None:
-            self.warning(msg='group ID not set')
-            return False
-        # check members
-        members = await self.facebook.get_members(identifier=group)
-        if members is None or len(members) == 0:
-            self.error(msg='group not ready: %s' % group)
-            return False
-        assert identifier.type == EntityType.USER, 'user error: %s' % identifier
-        if identifier in members:
-            self.info(msg='member already exists: %s -> %s' % (identifier, group))
-            return False
-        self.info(msg='invite %s into group: %s' % (identifier, group))
-        man = SharedGroupManager()
-        return await man.invite_group_members(members=[identifier], group=group)
+        try:
+            g_vars.process_new_user(identifier=identifier)
+        except Exception as error:
+            self.error(msg='failed to process new user: %s, error: %s' % (identifier, error))
 
 
 class BotMessageProcessor(ClientProcessor):

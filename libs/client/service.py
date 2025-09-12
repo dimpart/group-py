@@ -67,9 +67,7 @@ class BaseService(Runner, Service, Logging, ABC):
             return []
         elif isinstance(content, CustomizedContent):
             app = content.application
-            mod = content.module
-            act = content.action
-            if app == 'chat.dim.monitor' and mod == 'users' and act == 'post':
+            if app in ['chat.dim.monitor', 'chat.dim.session']:
                 self._add_request(content=content, envelope=envelope)
                 return []
 

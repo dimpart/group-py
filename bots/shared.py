@@ -25,14 +25,16 @@
 
 import getopt
 import sys
-from typing import Optional
+from typing import Optional, List, Dict
 
 from dimples import ID
 from dimples import Document
 from dimples import CommonFacebook
 from dimples import AccountDBI, MessageDBI, SessionDBI
+from dimples.database import Storage
 from dimples.client import ClientChecker
 
+from libs.utils import Log
 from libs.utils import Singleton, Config, Path
 from libs.database import Database
 
@@ -247,6 +249,8 @@ async def start_bot(ans_name: str, processor_class) -> Terminal:
     bot_id = ID.parse(bot_id)
     assert bot_id is not None, 'Failed to get Bot ID: %s' % config
     await shared.login(current_user=bot_id)
+    # update document
+    await update_services(config=config, section=ans_name)
     # create terminal
     host = config.station_host
     port = config.station_port
@@ -255,6 +259,39 @@ async def start_bot(ans_name: str, processor_class) -> Terminal:
     await client.connect(host=host, port=port)
     await client.run()
     return client
+
+
+async def update_services(config: Config, section: str) -> bool:
+    file_path = config.get_string(section=section, option='services')
+    if file_path is None:
+        return False
+    Log.info(msg='updating services: %s' % file_path)
+    array = await Storage.read_json(path=file_path)
+    if isinstance(array, Dict):
+        array = array['services']
+    if not isinstance(array, List):
+        Log.warning(msg='failed to load services: %s, %s' % (file_path, array))
+        return False
+    shared = GlobalVariable()
+    facebook = shared.facebook
+    user = await facebook.current_user
+    if user is None:
+        Log.error(msg='current user not found')
+        return False
+    visa = await user.visa
+    sign_key = await facebook.private_key_for_visa_signature(identifier=user.identifier)
+    if visa is None or sign_key is None:
+        Log.error(msg='current user error: %s' % user)
+        return False
+    else:
+        Log.info(msg='updating services for bot: %s, %s' % (user.identifier, array))
+        # clone for modifying
+        visa = Document.parse(document=visa.copy_dictionary())
+    # sign with services
+    visa.set_property(name='services', value=array)
+    visa.sign(private_key=sign_key)
+    archivist = facebook.archivist
+    return await archivist.save_document(document=visa)
 
 
 class BotClient(Terminal):
