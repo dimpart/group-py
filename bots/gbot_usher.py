@@ -74,6 +74,10 @@ class Freshman(Logging):
         self.__group = gid
 
     @property
+    def start_time(self) -> DateTime:
+        return self.__start_time
+
+    @property
     def new_users(self) -> Dict:
         return self.__new_users.copy()
 
@@ -82,7 +86,7 @@ class Freshman(Logging):
         shared = GlobalVariable()
         return shared.facebook
 
-    def _check_user(self, user: ID, group: ID) -> bool:
+    async def _check_user(self, user: ID, group: ID) -> bool:
         facebook = self.facebook
         # check user type
         if user.type != EntityType.USER:
@@ -97,7 +101,9 @@ class Freshman(Logging):
             created_time = Converter.get_datetime(value=created_time)
             if created_time is None:
                 self.error(msg='user visa error: %s' % visa)
-            elif self.__start_time.before(other=created_time):
+            elif self.start_time.after(other=created_time):
+                # this user's created time is before the bot launched,
+                # just ignore it
                 self.info(msg='ignore old user: %s' % user)
                 return False
         # check members
@@ -111,7 +117,7 @@ class Freshman(Logging):
         # OK
         return True
 
-    def process_new_user(self, identifier: ID) -> bool:
+    async def process_new_user(self, identifier: ID) -> bool:
         now = DateTime.now()
         when = self.__new_users.get(identifier)
         if when is not None:
@@ -121,7 +127,7 @@ class Freshman(Logging):
         if group is None:
             self.warning(msg='group ID not set')
             return False
-        if self._check_user(user=identifier, group=group):
+        if await self._check_user(user=identifier, group=group):
             self.info(msg='invite %s into group: %s' % (identifier, group))
             self.__new_users[identifier] = now
             man = SharedGroupManager()
@@ -210,7 +216,7 @@ class GroupUsher(BaseService):
             when = new_users.get(uid)
             text += '| %s | _%s_ |\n' % (name, when)
         text += '\n'
-        text += 'Totally %d new users.' % count
+        text += 'Totally %d new users from %s.' % (count, g_vars.start_time)
         self.info(msg='respond %d new users, %s' % (count, request.identifier))
         return await self.respond_text(text=text, request=request, extra={
             'format': 'markdown',
@@ -387,7 +393,7 @@ class GroupUsher(BaseService):
     # Override
     async def _process_new_user(self, identifier: ID):
         try:
-            g_vars.process_new_user(identifier=identifier)
+            await g_vars.process_new_user(identifier=identifier)
         except Exception as error:
             self.error(msg='failed to process new user: %s, error: %s' % (identifier, error))
 
