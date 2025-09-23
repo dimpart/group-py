@@ -44,6 +44,7 @@ curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 
+from libs.utils import md_user_url
 from libs.utils import Runner
 from libs.utils import Log, Logging
 from libs.utils import Config
@@ -72,6 +73,9 @@ class Freshman(Logging):
     @current_group.setter
     def current_group(self, gid):
         self.__group = gid
+        # reset after current group changed
+        self.__start_time = DateTime.now()
+        self.__new_users = {}
 
     @property
     def start_time(self) -> DateTime:
@@ -206,15 +210,16 @@ class GroupUsher(BaseService):
         text += '| Name | Last Time |\n'
         text += '|------|-----------|\n'
         for uid in new_users:
-            # get nickname
+            # get user info
             visa = await facebook.get_visa(user=uid)
-            name = None if visa is None else visa.name
-            if name is None or len(name) == 0:
-                name = uid.name
-                if name is None or len(name) == 0:
-                    name = str(uid)
-            when = new_users.get(uid)
-            text += '| %s | _%s_ |\n' % (name, when)
+            if visa is None:
+                title = '**%s**' % uid
+            else:
+                title = md_user_url(visa=visa)
+            when = str(new_users.get(uid))
+            if len(when) == 19:
+                when = when[5:-3]
+            text += '| %s | _%s_ |\n' % (title, when)
         text += '\n'
         text += 'Totally %d new users from %s.' % (count, g_vars.start_time)
         self.info(msg='respond %d new users, %s' % (count, request.identifier))
@@ -240,17 +245,16 @@ class GroupUsher(BaseService):
             elif uid == sender:
                 self.info(msg='skip the sender: %s' % uid)
                 continue
-            # get nickname
+            # get user info
             visa = await facebook.get_visa(user=uid)
-            name = None if visa is None else visa.name
-            if name is None or len(name) == 0:
-                name = uid.name
-                if name is None or len(name) == 0:
-                    name = str(uid)
+            if visa is None:
+                title = '**%s**' % uid
+            else:
+                title = md_user_url(visa=visa)
             when = str(item.time)
             if len(when) == 19:
                 when = when[5:-3]
-            text += '| %s | _%s_ |\n' % (name, when)
+            text += '| %s | _%s_ |\n' % (title, when)
             active_users.append(str(uid))
         text += '\n'
         text += 'Totally %d users.' % len(active_users)
