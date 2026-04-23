@@ -31,6 +31,7 @@ from dimples import ID
 from dimples import Document
 from dimples import CommonFacebook
 from dimples import AccountDBI, MessageDBI, SessionDBI
+from dimples.common import DocumentUtils
 from dimples.database import Storage
 from dimples.client import ClientChecker
 
@@ -165,12 +166,13 @@ class GlobalVariable:
         print('set current user: %s' % current_user)
         user = await facebook.get_user(identifier=current_user)
         assert user is not None, 'failed to get current user: %s' % current_user
-        visa = await user.visa
+        docs = await user.documents
+        visa = DocumentUtils.last_visa(documents=docs)
         if visa is not None:
             # refresh visa
-            visa = Document.parse(document=visa.copy_dictionary())
+            visa = Document.parse(document=visa.copy_dict())
             visa.sign(private_key=sign_key)
-            await archivist.save_document(document=visa)
+            await archivist.save_document(document=visa, identifier=current_user)
         await facebook.set_current_user(user=user)
 
 
@@ -278,7 +280,8 @@ async def update_services(config: Config, section: str) -> bool:
     if user is None:
         Log.error(msg='current user not found')
         return False
-    visa = await user.visa
+    docs = await user.documents
+    visa = DocumentUtils.last_visa(documents=docs)
     sign_key = await facebook.private_key_for_visa_signature(identifier=user.identifier)
     if visa is None or sign_key is None:
         Log.error(msg='current user error: %s' % user)
@@ -286,12 +289,12 @@ async def update_services(config: Config, section: str) -> bool:
     else:
         Log.info(msg='updating services for bot: %s, %s' % (user.identifier, array))
         # clone for modifying
-        visa = Document.parse(document=visa.copy_dictionary())
+        visa = Document.parse(document=visa.copy_dict())
     # sign with services
     visa.set_property(name='services', value=array)
     visa.sign(private_key=sign_key)
     archivist = facebook.archivist
-    return await archivist.save_document(document=visa)
+    return await archivist.save_document(document=visa, identifier=user.identifier)
 
 
 class BotClient(Terminal):
