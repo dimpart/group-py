@@ -37,6 +37,8 @@ from typing import Optional, List, Dict
 
 from dimples import DateTime, Converter
 from dimples import EntityType, ID
+from dimples import DocumentUtils
+
 from dimples import TextContent, FileContent
 from dimples import CustomizedContent
 
@@ -169,7 +171,7 @@ class GroupUsher(BaseService):
             self.error(msg='group not ready: %s' % group)
             name = group.name
         else:
-            name = doc.name
+            name = DocumentUtils.get_document_name(document=doc)
         # name = md_esc(text=name)
         return '- Name: ***"%s"***\n- ID  : %s\n' % (name, group)
 
@@ -377,7 +379,8 @@ class GroupUsher(BaseService):
 
     # Override
     async def _process_customized_content(self, content: CustomizedContent, request: Request):
-        app = content.application
+        # app = content.application
+        app = content.get_str(key='app')
         mod = content.module
         act = content.action
         if app == 'chat.dim.session':

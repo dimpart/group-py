@@ -29,11 +29,12 @@ from dimples import ID
 from dimples import ReliableMessage
 from dimples import Content
 from dimples import CustomizedContent
-from dimples import BaseCustomizedHandler
+from dimples.client.cpu import BaseCustomizedContentHandler
 
 from libs.utils import Singleton
 from libs.common import GroupKeys
 from libs.database import Database
+from libs.client import ClientMessenger
 
 
 @Singleton
@@ -94,19 +95,21 @@ class GroupKeyManager:
         return keys.get(str(member))
 
 
-class GroupKeyHandler(BaseCustomizedHandler):
+class GroupKeyHandler(BaseCustomizedContentHandler):
 
     # noinspection PyMethodMayBeStatic
     def matches(self, app: str, mod: str) -> bool:
         return app == GroupKeys.APP and mod == GroupKeys.MOD
 
     # Override
-    async def handle_action(self, act: str, sender: ID, content: CustomizedContent,
-                            msg: ReliableMessage) -> List[Content]:
+    async def handle_action(self, content: CustomizedContent, msg: ReliableMessage,
+                            messenger: ClientMessenger) -> List[Content]:
+        sender = msg.sender
         group = content.group
         assert group is not None, 'group command error: %s, sender: %s' % (content, sender)
         # app = 'chat.dim.group'
         # mod = 'keys'
+        act = content.action
         if act == GroupKeys.ACT_UPDATE:  # 'update'
             # encrypted group keys from sender:
             # {
@@ -122,7 +125,7 @@ class GroupKeyHandler(BaseCustomizedHandler):
             return await self._request_group_key(group=group, member=sender, content=content, msg=msg)
         else:
             # action not supported
-            return await super().handle_action(act=act, sender=sender, content=content, msg=msg)
+            return await super().handle_action(content=content, msg=msg, messenger=messenger)
 
     # Step 2. sender -> bot
     async def _update_group_keys(self, group: ID, sender: ID,

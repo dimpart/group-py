@@ -33,16 +33,21 @@
 from typing import Optional, Dict
 
 from dimples import Visa
+from dimples import DocumentUtils
 
 
 def get_name(visa: Visa) -> str:
     name = visa.name
-    if name is None or len(name) == 0:
-        identifier = visa.identifier
+    if name is not None and len(name) > 0:
+        return name
+    identifier = DocumentUtils.get_document_id(document=visa)
+    if identifier is not None:
         name = identifier.name
-        if name is None or len(name) == 0:
-            name = str(identifier.address)
-    return name
+        if name is not None and len(name) > 0:
+            return name
+        return str(identifier.address)
+    else:
+        assert False, 'visa error: %s' % visa
 
 
 def get_locale(visa: Visa) -> Optional[str]:

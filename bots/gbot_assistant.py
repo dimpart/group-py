@@ -42,6 +42,8 @@ from dimples import ContentProcessor, ContentProcessorCreator
 from dimples import Facebook, Messenger
 from dimples import GroupKeys
 
+from dimples.client.cpu.app.filter import get_app_filter
+
 curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
@@ -79,14 +81,6 @@ class GroupService(BaseService):
 class AssistantContentProcessorCreator(ClientContentProcessorCreator):
 
     # Override
-    def _create_customized_content_processor(self, facebook: Facebook, messenger: Messenger):  # AppCustomizedProcessor:
-        cpu = super()._create_customized_content_processor(facebook=facebook, messenger=messenger)
-        # 'chat.dim.group:keys'
-        handler = GroupKeyHandler(facebook=facebook, messenger=messenger)
-        cpu.set_handler(app=GroupKeys.APP, mod=GroupKeys.MOD, handler=handler)
-        return cpu
-
-    # Override
     def create_content_processor(self, msg_type: str) -> Optional[ContentProcessor]:
         # forward
         if msg_type == ContentType.FORWARD or msg_type == 'forward':
@@ -108,6 +102,18 @@ class AssistantProcessor(ClientProcessor):
         return AssistantContentProcessorCreator(facebook=self.facebook, messenger=self.messenger)
 
 
+# -----------------------------------------------------------------------------
+#  Message Extensions
+# -----------------------------------------------------------------------------
+
+
+def register_customized_handlers():
+    app_filter = get_app_filter()
+    # 'chat.dim.group:keys'
+    handler = GroupKeyHandler()
+    app_filter.set_content_handler(app=GroupKeys.APP, mod=GroupKeys.MOD, handler=handler)
+
+
 #
 # show logs
 #
@@ -122,6 +128,8 @@ async def async_main():
     shared = GlobalVariable()
     config = await create_config(app_name='DIM Group Assistant', default_config=DEFAULT_CONFIG)
     await shared.prepare(config=config)
+    # register handlers
+    register_customized_handlers()
     #
     #  Create & start the bot
     #

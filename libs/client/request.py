@@ -27,6 +27,8 @@ from typing import Optional
 
 from dimples import DateTime
 from dimples import EntityType, ID
+from dimples import DocumentUtils
+
 from dimples import Content, Envelope
 from dimples import CommonFacebook
 
@@ -110,4 +112,4 @@ async def filter_text(text: str, content: Content, envelope: Envelope, facebook:
 async def get_nickname(identifier: ID, facebook: CommonFacebook) -> Optional[str]:
     visa = await facebook.get_document(identifier=identifier)
     if visa is not None:
-        return visa.name
+        return DocumentUtils.get_document_name(document=visa)

@@ -29,7 +29,8 @@ from typing import Optional, List, Dict
 
 from dimples import EntityType, ID
 from dimples import Content, Envelope
-from dimples import TextContent, FileContent, CustomizedContent
+from dimples import TextContent, FileContent
+from dimples import AppContent, CustomizedContent
 
 from ..utils import Runner
 from ..utils import Logging
@@ -65,7 +66,7 @@ class BaseService(Runner, Service, Logging, ABC):
         elif isinstance(content, FileContent):
             self._add_request(content=content, envelope=envelope)
             return []
-        elif isinstance(content, CustomizedContent):
+        elif isinstance(content, AppContent):
             app = content.application
             if app in ['chat.dim.monitor', 'chat.dim.session']:
                 self._add_request(content=content, envelope=envelope)
@@ -105,7 +106,8 @@ class BaseService(Runner, Service, Logging, ABC):
 
     # Override
     async def _process_customized_content(self, content: CustomizedContent, request: Request):
-        app = content.application
+        # app = content.application
+        app = content.get_str(key='app')
         mod = content.module
         act = content.action
         users = content.get('users')

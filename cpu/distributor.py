@@ -134,6 +134,6 @@ class GroupMessageDistributor(Runner, Logging):
             messages = await self._get_messages(receiver=receiver)
             self.info(msg='forward %d messages for receiver: %s' % (len(messages), receiver))
             for msg in messages:
-                command = ForwardContent.create(message=msg)
+                command = ForwardContent.create(messages=[msg])
                 await messenger.send_content(sender=None, receiver=receiver, content=command)
             # TODO: load all messages?

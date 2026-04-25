@@ -75,9 +75,6 @@ class ForwardContentProcessor(BaseContentProcessor):
             else:
                 results = await messenger.process_reliable_message(msg=item)
             # NOTICE: append one result for each forwarded message.
-            if len(results) == 1:
-                res = ForwardContent.create(message=results[0])
-            else:
-                res = ForwardContent.create(messages=results)
+            res = ForwardContent.create(messages=results)
             responses.append(res)
         return responses
