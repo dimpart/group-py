@@ -33,7 +33,7 @@
 
 import sys
 import os
-from typing import Optional, List, Dict
+from typing import Optional, Set, Dict
 
 from dimples import DateTime, Converter
 from dimples import EntityType, ID
@@ -49,7 +49,7 @@ sys.path.append(rootPath)
 from libs.utils import md_user_url
 from libs.utils import Runner
 from libs.utils import Log, Logging
-from libs.utils import Config
+from libs.utils import Config, Supervisor
 
 from libs.client import ClientProcessor
 from libs.client import SharedGroupManager
@@ -158,10 +158,11 @@ class GroupUsher(BaseService):
         shared = GlobalVariable()
         return shared.facebook
 
-    async def get_supervisors(self) -> List[ID]:
+    async def get_supervisors(self) -> Set[ID]:
         config = self.config
         facebook = self.facebook
-        return await config.get_supervisors(facebook=facebook)
+        loader = Supervisor(facebook=facebook)
+        return await loader.get_users(config=config, section='admin')
 
     async def __group_info(self, group: ID) -> str:
         """ build group info """
@@ -294,7 +295,7 @@ class GroupUsher(BaseService):
                   '* current group\n' \
                   '* set current group\n'
 
-    async def _help_info(self, supervisors: List[ID]) -> str:
+    async def _help_info(self, supervisors: Set[ID]) -> str:
         facebook = self.facebook
         text = '## Supervisors\n'
         for did in supervisors:

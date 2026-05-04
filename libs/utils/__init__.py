@@ -68,7 +68,7 @@ __all__ = [
     'FrequencyChecker', 'RecentTimeChecker',
 
     'Log', 'Logging',
-    'Config',
+    'Config', 'Supervisor',
 
     'is_before',
     'get_msg_sig',
