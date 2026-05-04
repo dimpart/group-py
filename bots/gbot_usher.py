@@ -33,7 +33,7 @@
 
 import sys
 import os
-from typing import Optional, Set, Dict
+from typing import Optional, Dict
 
 from dimples import DateTime, Converter
 from dimples import EntityType, ID
@@ -46,10 +46,11 @@ curPath = os.path.abspath(os.path.dirname(__file__))
 rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 
+from libs.utils import get_supervisors, md_supervisors
 from libs.utils import md_user_url
 from libs.utils import Runner
 from libs.utils import Log, Logging
-from libs.utils import Config, Supervisor
+from libs.utils import Config
 
 from libs.client import ClientProcessor
 from libs.client import SharedGroupManager
@@ -157,12 +158,6 @@ class GroupUsher(BaseService):
     def facebook(self):
         shared = GlobalVariable()
         return shared.facebook
-
-    async def get_supervisors(self) -> Set[ID]:
-        config = self.config
-        facebook = self.facebook
-        loader = Supervisor(facebook=facebook)
-        return await loader.get_users(config=config, section='admin')
 
     async def __group_info(self, group: ID) -> str:
         """ build group info """
@@ -295,21 +290,16 @@ class GroupUsher(BaseService):
                   '* current group\n' \
                   '* set current group\n'
 
-    async def _help_info(self, supervisors: Set[ID]) -> str:
-        facebook = self.facebook
-        text = '## Supervisors\n'
-        for did in supervisors:
-            name = await facebook.get_name(identifier=did)
-            if name is None:
-                text += '* %s\n' % did
-                continue
-            text += '* "%s" - %s\n' % (name, did)
-        return '%s\n%s' % (self.HELP_PROMPT, text)
+    async def _help_info(self) -> str:
+        # get supervisors from config
+        text = await md_supervisors(config=self.config, facebook=self.facebook, section='usher')
+        return '%s\n\n## Supervisors\n%s' % (self.HELP_PROMPT, text)
 
     async def _process_admin_command(self, command: str, request: Request):
         sender = request.envelope.sender
         # check permissions before executing command
-        supervisors = await self.get_supervisors()
+        self.info(msg='process command: "%s"' % command)
+        supervisors = await get_supervisors(config=self.config, facebook=self.facebook, section='usher')
         if sender not in supervisors:
             self.warning(msg='permission denied: "%s", sender: %s' % (command, sender))
             text = 'Forbidden\n'
@@ -342,13 +332,12 @@ class GroupUsher(BaseService):
                     self.error(msg='text content error: %s' % content)
                     return
         self.info(msg='process keywords: "%s"' % keywords)
-        supervisors = await self.get_supervisors()
         command = keywords.strip()
         if command == 'help':
             #
             #  usages
             #
-            text = await self._help_info(supervisors=supervisors)
+            text = await self._help_info()
             await self.respond_markdown(text=text, request=request)
         elif command in self.ADMIN_COMMANDS:
             #
