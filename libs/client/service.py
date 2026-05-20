@@ -91,18 +91,22 @@ class BaseService(Runner, Service, Logging, ABC):
             elif isinstance(content, CustomizedContent):
                 await self._process_customized_content(content=content, request=request)
         except Exception as error:
-            self.error(msg='failed to process request: %s -> %s, %s' % (request.sender, request.identifier, error))
+            self.error('failed to process request: %s -> %s, %s', request.sender, request.identifier, error)
         # task done,
         # return True to process next immediately
         return True
 
     @abstractmethod
     async def _process_text_content(self, content: TextContent, request: Request):
-        raise NotImplemented
+        raise NotImplementedError(
+            f'Not implemented: {type(self).__module__}.{type(self).__name__}._process_text_content()'
+        )
 
     @abstractmethod
     async def _process_file_content(self, content: FileContent, request: Request):
-        raise NotImplemented
+        raise NotImplementedError(
+            f'Not implemented: {type(self).__module__}.{type(self).__name__}._process_file_content()'
+        )
 
     # Override
     async def _process_customized_content(self, content: CustomizedContent, request: Request):
@@ -112,30 +116,32 @@ class BaseService(Runner, Service, Logging, ABC):
         act = content.action
         users = content.get('users')
         if app != 'chat.dim.monitor' or mod != 'users' or act != 'post':
-            self.warning(msg='ignore customized content: %s, sender: %s' % (content, request.sender))
+            self.warning('ignore customized content: %s, sender: %s', content, request.sender)
             return False
         elif not isinstance(users, List):
-            self.error(msg='users content error: %s, %s' % (content, request.envelope))
+            self.error('users content error: %s, %s', content, request.envelope)
             return False
         else:
-            self.info(msg='received users: %s' % users)
+            self.info('received users: %s', users)
         fp = Footprint()
         when = content.time
         for item in users:
             identifier = ID.parse(identifier=item.get('U'))
             if identifier is None or identifier.type != EntityType.USER:
-                self.warning(msg='ignore user: %s' % item)
+                self.warning('ignore user: %s', item)
                 continue
             vanished = await fp.is_vanished(identifier=identifier, now=when)
             await fp.touch(identifier=identifier, when=when)
-            self.info(msg='invite member? %s, %s' % (vanished, identifier))
+            self.info('invite member? %s, %s', vanished, identifier)
             if vanished:
                 await self._process_new_user(identifier=identifier)
         return True
 
     @abstractmethod
     async def _process_new_user(self, identifier: ID):
-        raise NotImplemented
+        raise NotImplementedError(
+            f'Not implemented: {type(self).__module__}.{type(self).__name__}._process_new_user()'
+        )
 
     #
     #   Responses
@@ -174,6 +180,6 @@ def calibrate_time(content: Content, request: Request, period: float = 1.0):
     res_time = content.time
     req_time = request.time
     if req_time is None:
-        assert False, 'request error: %s' % req_time
+        assert False, f'request error: {req_time}'
     elif res_time is None or res_time <= req_time:
         content['time'] = req_time + period

@@ -69,14 +69,14 @@ class ActiveUser:
         elif isinstance(user, ActiveUser):
             return user
         else:
-            assert isinstance(user, Dict), 'active user error: %s' % user
+            assert isinstance(user, Dict), f'active user error: {user}'
         did = user.get('did')
         if did is None:
             did = user.get('ID')
         identifier = ID.parse(identifier=did)
         when = DateTime.parse(user.get('time'))
         if identifier is None or when is None:
-            # assert False, 'active user error: %s' % user
+            # assert False, f'active user error: {user}'
             return None
         return ActiveUser(identifier=identifier, when=when)
 
@@ -101,11 +101,11 @@ class ActiveUser:
                     'time_str': str(item.time),
                 }
             elif isinstance(item, Dict):
-                assert 'did' in item or 'ID' in item, 'user info error: %s' % item
-                assert 'time' in item, 'user info error: %s' % item
+                assert 'did' in item or 'ID' in item, f'user info error: {item}'
+                assert 'time' in item, f'user info error: {item}'
                 info = item
             else:
-                assert False, 'user info error: %s' % item
+                assert False, f'user info error: {item}'
             array.append(info)
         return array
 
@@ -114,8 +114,12 @@ class ActiveUserDBI(ABC):
 
     @abstractmethod
     async def save_active_users(self, users: List[ActiveUser]) -> bool:
-        raise NotImplemented
+        raise NotImplementedError(
+            f'Not implemented: {type(self).__module__}.{type(self).__name__}.save_active_users()'
+        )
 
     @abstractmethod
     async def load_active_users(self) -> List[ActiveUser]:
-        raise NotImplemented
+        raise NotImplementedError(
+            f'Not implemented: {type(self).__module__}.{type(self).__name__}.load_active_users()'
+        )

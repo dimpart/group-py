@@ -32,7 +32,6 @@
 """
 
 import sys
-import os
 from typing import Optional, Dict
 
 from dimples import DateTime, Converter
@@ -42,15 +41,19 @@ from dimples import DocumentUtils
 from dimples import TextContent, FileContent
 from dimples import CustomizedContent
 
-curPath = os.path.abspath(os.path.dirname(__file__))
-rootPath = os.path.split(curPath)[0]
-sys.path.append(rootPath)
+from dimples.utils import SysArgvParser
+from dimples.utils import init_logger
+from dimples.utils import Log, LogLevel, Logging
+from dimples.utils import Runner, Config
+from dimples.utils import Path
+
+path = Path.abs(path=__file__)
+path = Path.dir(path=path)
+path = Path.dir(path=path)
+Path.add(path=path)
 
 from libs.utils import get_supervisors, md_supervisors
 from libs.utils import md_user_url
-from libs.utils import Runner
-from libs.utils import Log, Logging
-from libs.utils import Config
 
 from libs.client import ClientProcessor
 from libs.client import SharedGroupManager
@@ -59,6 +62,7 @@ from libs.client import Service, Request, BaseService
 
 from bots.shared import GlobalVariable
 from bots.shared import create_config, start_bot
+from bots.shared import show_help
 
 
 class Freshman(Logging):
@@ -97,29 +101,29 @@ class Freshman(Logging):
         facebook = self.facebook
         # check user type
         if user.type != EntityType.USER:
-            self.error(msg='user error: %s' % user)
+            self.error('user error: %s', user)
             return False
         # check user time
         visa = await facebook.get_visa(user=user)
         if visa is None:
-            self.error(msg='user not ready: %s' % user)
+            self.error('user not ready: %s', user)
         else:
             created_time = visa.get_property(name='created_time')
             created_time = Converter.get_datetime(value=created_time)
             if created_time is None:
-                self.error(msg='user visa error: %s' % visa)
+                self.error('user visa error: %s', visa)
             elif self.start_time.after(other=created_time):
                 # this user's created time is before the bot launched,
                 # just ignore it
-                self.info(msg='ignore old user: %s' % user)
+                self.info('ignore old user: %s', user)
                 return False
         # check members
         members = await facebook.get_members(identifier=group)
         if members is None or len(members) == 0:
-            self.error(msg='group not ready: %s' % group)
+            self.error('group not ready: %s', group)
             return False
         if user in members:
-            self.info(msg='member already exists: %s -> %s' % (user, group))
+            self.info('member already exists: %s -> %s', user, group)
             return False
         # OK
         return True
@@ -132,10 +136,10 @@ class Freshman(Logging):
         # check current group
         group = self.current_group
         if group is None:
-            self.warning(msg='group ID not set')
+            self.warning('group ID not set')
             return False
         if await self._check_user(user=identifier, group=group):
-            self.info(msg='invite %s into group: %s' % (identifier, group))
+            self.info('invite %s into group: %s', identifier, group)
             self.__new_users[identifier] = now
             man = SharedGroupManager()
             return await man.invite_group_members(members=[identifier], group=group)
@@ -164,17 +168,18 @@ class GroupUsher(BaseService):
         facebook = self.facebook
         doc = await facebook.get_document(identifier=group)
         if doc is None:
-            self.error(msg='group not ready: %s' % group)
+            self.error('group not ready: %s', group)
             name = group.name
         else:
             name = DocumentUtils.get_document_name(document=doc)
         # name = md_esc(text=name)
-        return '- Name: ***"%s"***\n- ID  : %s\n' % (name, group)
+        return f'- Name: ***"{name}"***\n- ID  : {group}\n'
 
     async def __query_current_group(self, request: Request):
         current = g_vars.current_group
         if isinstance(current, ID):
-            text = 'Current group is:\n%s' % await self.__group_info(group=current)
+            grp_info = await self.__group_info(group=current)
+            text = f'Current group is:\n{grp_info}'
             await self.respond_markdown(text=text, request=request)
             return True
         else:
@@ -190,13 +195,14 @@ class GroupUsher(BaseService):
             await self.respond_text(text=text, request=request)
         else:
             old = g_vars.current_group
-            self.warning(msg='change current group by %s: %s -> %s' % (sender, old, group))
+            self.warning('change current group by %s: %s -> %s', sender, old, group)
             g_vars.current_group = group
-            text = 'Current group set to:\n%s' % await self.__group_info(group=group)
+            grp_info = await self.__group_info(group=group)
+            text = f'Current group set to:\n{grp_info}\n'
             if old is not None:
-                assert isinstance(old, ID), 'old group ID error: %s' % old
-                text += '\n'
-                text += 'replacing the old one:\n%s' % await self.__group_info(group=old)
+                assert isinstance(old, ID), f'old group ID error: {old}'
+                grp_info = await self.__group_info(group=old)
+                text += f'replacing the old one:\n{grp_info}\n'
             await self.respond_markdown(text=text, request=request)
 
     async def __show_new_users(self, request: Request):
@@ -211,16 +217,16 @@ class GroupUsher(BaseService):
             # get user info
             visa = await facebook.get_visa(user=uid)
             if visa is None:
-                title = '**%s**' % uid
+                title = f'**{uid}**'
             else:
                 title = md_user_url(visa=visa)
             when = str(new_users.get(uid))
             if len(when) == 19:
                 when = when[5:-3]
-            text += '| %s | _%s_ |\n' % (title, when)
+            text += f'| {title} | _{when}_ |\n'
         text += '\n'
-        text += 'Totally %d new users from %s.' % (count, g_vars.start_time)
-        self.info(msg='respond %d new users, %s' % (count, request.identifier))
+        text += f'Totally {count} new users from {g_vars.start_time}.'
+        self.info('respond %d new users, %s', count, request.identifier)
         return await self.respond_text(text=text, request=request, extra={
             'format': 'markdown',
         })
@@ -238,31 +244,31 @@ class GroupUsher(BaseService):
         for item in users:
             uid = item.identifier
             if uid.type != EntityType.USER:
-                self.info(msg='ignore user: %s' % uid)
+                self.info('ignore user: %s', uid)
                 continue
             elif uid == sender:
-                self.info(msg='skip the sender: %s' % uid)
+                self.info('skip the sender: %s', uid)
                 continue
             # get user info
             visa = await facebook.get_visa(user=uid)
             if visa is None:
-                title = '**%s**' % uid
+                title = f'**{uid}**'
             else:
                 title = md_user_url(visa=visa)
             when = str(item.time)
             if len(when) == 19:
                 when = when[5:-3]
-            text += '| %s | _%s_ |\n' % (title, when)
+            text += f'| {title} | _{when}_ |\n'
             active_users.append(str(uid))
         text += '\n'
-        text += 'Totally %d users.' % len(active_users)
+        text += f'Totally {len(active_users)} users.'
         # search tag
         content = request.content
         tag = content.get('tag')
         title = content.get('title')
         keywords = content.get('keywords')
         hidden = content.get('hidden')
-        self.info(msg='respond %d/%d users, tag %s, %s' % (len(active_users), len(users), tag, request.identifier))
+        self.info('respond %d/%d users, tag %s, %s', len(active_users), len(users), tag, request.identifier)
         return await self.respond_text(text=text, request=request, extra={
             'format': 'markdown',
             'muted': hidden,
@@ -293,15 +299,16 @@ class GroupUsher(BaseService):
     async def _help_info(self) -> str:
         # get supervisors from config
         text = await md_supervisors(config=self.config, facebook=self.facebook, section='usher')
-        return '%s\n\n## Supervisors\n%s' % (self.HELP_PROMPT, text)
+        return f'{self.HELP_PROMPT}\n\n## Supervisors\n{text}'
 
     async def _process_admin_command(self, command: str, request: Request):
         sender = request.envelope.sender
         # check permissions before executing command
-        self.info(msg='process command: "%s"' % command)
+        self.info('process admin command: "%s"', command)
         supervisors = await get_supervisors(config=self.config, facebook=self.facebook, section='usher')
+        # check permissions before executing command
         if sender not in supervisors:
-            self.warning(msg='permission denied: "%s", sender: %s' % (command, sender))
+            self.warning('permission denied: "%s", sender: %s', command, sender)
             text = 'Forbidden\n'
             text += '\n----\n'
             text += 'Permission Denied'
@@ -329,9 +336,9 @@ class GroupUsher(BaseService):
             if keywords is None or len(keywords) == 0:
                 keywords = await request.get_text(facebook=self.facebook)
                 if keywords is None:
-                    self.error(msg='text content error: %s' % content)
+                    self.error('text content error: %s', content)
                     return
-        self.info(msg='process keywords: "%s"' % keywords)
+        self.info('process keywords: "%s"', keywords)
         command = keywords.strip()
         if command == 'help':
             #
@@ -358,7 +365,7 @@ class GroupUsher(BaseService):
             #
             #  error
             #
-            text = 'Unexpected command: "%s"' % keywords
+            text = f'Unexpected command: "{keywords}"'
             await self.respond_text(text=text, request=request)
 
     # Override
@@ -382,7 +389,7 @@ class GroupUsher(BaseService):
             else:
                 # error
                 sender = request.envelope.sender
-                self.error(msg='content error: app="%s" mod="%s" act="%s", sender: %s' % (app, mod, act, sender))
+                self.error('content error: app="%s" mod="%s" act="%s", sender: %s', app, mod, act, sender)
         else:
             # app == 'chat.dim.monitor' and mod == 'users' and act == 'post'
             await super()._process_customized_content(content=content, request=request)
@@ -392,7 +399,7 @@ class GroupUsher(BaseService):
         try:
             await g_vars.process_new_user(identifier=identifier)
         except Exception as error:
-            self.error(msg='failed to process new user: %s, error: %s' % (identifier, error))
+            self.error('failed to process new user: %s, error: %s', identifier, error)
 
 
 class BotMessageProcessor(ClientProcessor):
@@ -405,24 +412,43 @@ class BotMessageProcessor(ClientProcessor):
 
 
 #
-# show logs
+#  show logs
 #
-Log.LEVEL = Log.DEVELOP
+LOG_LEVEL = LogLevel.DEVELOP
 
+BOT_NAME = 'usher'
+
+APP_NAME = 'GroupBot: Usher'
 
 DEFAULT_CONFIG = '/etc/dim/group.ini'
 
 
 async def async_main():
-    # create global variable
-    shared = GlobalVariable()
-    config = await create_config(app_name='GroupBot: Usher', default_config=DEFAULT_CONFIG)
-    await shared.prepare(config=config)
+    #
+    #  parse cmd parameters
+    #
+    sys_argv = SysArgvParser.parse(shortopts='hf:ld:',
+                                   longopts=['help', 'config=', 'log-location', 'log-dir='])
+    if sys_argv is None:
+        show_help(app_name=APP_NAME, cmd=sys.argv[0], default_config=DEFAULT_CONFIG)
+        sys.exit(1)
+    #
+    #  init logger
+    #
+    show_location = sys_argv.has_opt(opt='log-location')
+    init_logger(name=BOT_NAME, level=LOG_LEVEL, show_location=show_location)
+    #
+    #  create config
+    #
+    config = await create_config(sys_argv=sys_argv, default_config=DEFAULT_CONFIG)
+    if config is None:
+        show_help(app_name=APP_NAME, cmd=sys.argv[0], default_config=DEFAULT_CONFIG)
+        sys.exit(1)
     #
     #  Create & start the bot
     #
-    client = await start_bot(ans_name='usher', processor_class=BotMessageProcessor)
-    Log.warning(msg='bot stopped: %s' % client)
+    client = await start_bot(ans_name=BOT_NAME, processor_class=BotMessageProcessor)
+    Log.warning('bot stopped: %s', client)
 
 
 def main():

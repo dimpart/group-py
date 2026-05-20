@@ -32,7 +32,6 @@
 """
 
 import sys
-import os
 from typing import Optional
 
 from dimples import ID
@@ -44,11 +43,17 @@ from dimples import GroupKeys
 
 from dimples.client.cpu.app.filter import get_app_filter
 
-curPath = os.path.abspath(os.path.dirname(__file__))
-rootPath = os.path.split(curPath)[0]
-sys.path.append(rootPath)
+from dimples.utils import SysArgvParser
+from dimples.utils import init_logger
+from dimples.utils import Log, LogLevel
+from dimples.utils import Runner
+from dimples.utils import Path
 
-from libs.utils import Log, Runner
+path = Path.abs(path=__file__)
+path = Path.dir(path=path)
+path = Path.dir(path=path)
+Path.add(path=path)
+
 from libs.client import ClientContentProcessorCreator
 from libs.client import ClientProcessor
 from libs.client import Service, Request, BaseService
@@ -57,8 +62,8 @@ from cpu import GroupKeyHandler
 from cpu import ForwardContentProcessor
 from cpu import GroupMessageDistributor
 
-from bots.shared import GlobalVariable
 from bots.shared import create_config, start_bot
+from bots.shared import show_help
 
 
 class GroupService(BaseService):
@@ -66,11 +71,11 @@ class GroupService(BaseService):
     # Override
     async def _process_text_content(self, content: TextContent, request: Request):
         text = content.text
-        self.info(msg='received text message from %s: "%s"' % (request.sender, text))
+        self.info('received text message from %s: "%s"', request.sender, text)
 
     # Override
     async def _process_file_content(self, content: FileContent, request: Request):
-        self.info(msg='received file from %s: %s' % (request.sender, content))
+        self.info('received file from %s: %s', request.sender, content)
 
     # Override
     async def _process_new_user(self, identifier: ID):
@@ -115,26 +120,47 @@ def register_customized_handlers():
 
 
 #
-# show logs
+#  show logs
 #
-Log.LEVEL = Log.DEVELOP
+LOG_LEVEL = LogLevel.DEVELOP
 
+BOT_NAME = 'assistant'
+
+APP_NAME = 'DIM Group Assistant'
 
 DEFAULT_CONFIG = '/etc/dim/group.ini'
 
 
 async def async_main():
-    # create global variable
-    shared = GlobalVariable()
-    config = await create_config(app_name='DIM Group Assistant', default_config=DEFAULT_CONFIG)
-    await shared.prepare(config=config)
-    # register handlers
+    #
+    #  parse cmd parameters
+    #
+    sys_argv = SysArgvParser.parse(shortopts='hf:ld:',
+                                   longopts=['help', 'config=', 'log-location', 'log-dir='])
+    if sys_argv is None:
+        show_help(app_name=APP_NAME, cmd=sys.argv[0], default_config=DEFAULT_CONFIG)
+        sys.exit(1)
+    #
+    #  init logger
+    #
+    show_location = sys_argv.has_opt(opt='log-location')
+    init_logger(name=BOT_NAME, level=LOG_LEVEL, show_location=show_location)
+    #
+    #  create config
+    #
+    config = await create_config(sys_argv=sys_argv, default_config=DEFAULT_CONFIG)
+    if config is None:
+        show_help(app_name=APP_NAME, cmd=sys.argv[0], default_config=DEFAULT_CONFIG)
+        sys.exit(1)
+    #
+    #  register handlers
+    #
     register_customized_handlers()
     #
     #  Create & start the bot
     #
-    client = await start_bot(ans_name='assistant', processor_class=AssistantProcessor)
-    Log.warning(msg='bot stopped: %s' % client)
+    client = await start_bot(ans_name=BOT_NAME, processor_class=AssistantProcessor)
+    Log.warning('bot stopped: %s', client)
 
 
 def main():
