@@ -40,6 +40,7 @@ from dimples import DocumentUtils
 
 from dimples import TextContent, FileContent
 from dimples import CustomizedContent
+from dimples import DocumentCommand
 
 from dimples.utils import SysArgvParser
 from dimples.utils import init_logger
@@ -97,6 +98,11 @@ class Freshman(Logging):
         shared = GlobalVariable()
         return shared.facebook
 
+    @property
+    def messenger(self):
+        shared = GlobalVariable()
+        return shared.messenger
+
     async def _check_user(self, user: ID, group: ID) -> bool:
         facebook = self.facebook
         # check user type
@@ -128,6 +134,38 @@ class Freshman(Logging):
         # OK
         return True
 
+    async def _broadcast_user(self, user: ID, group: ID) -> bool:
+        facebook = self.facebook
+        messenger = self.messenger
+        if facebook is None or messenger is None:
+            self.error('twins not ready: %s, %s', facebook, messenger)
+            return False
+        current = await facebook.current_user
+        if current is None:
+            self.error('current user not ready')
+            return False
+        meta = await facebook.get_meta(identifier=user)
+        docs = await facebook.get_documents(identifier=user)
+        members = await facebook.get_members(identifier=group)
+        if meta is None or docs is None or len(docs) == 0:
+            self.error('user not ready: %s, cannot broadcast to group members: %s', user, group)
+            return False
+        elif members is None or len(members) == 0:
+            self.error('group not ready: %s', group)
+            return False
+        sender = current.identifier
+        success = 0
+        content = DocumentCommand.response(documents=docs, meta=meta, identifier=user)
+        for receiver in members:
+            if sender == receiver or receiver == user:
+                self.warning('skip this receiver: %s, new user: %s, the bot: %s', receiver, user, sender)
+                continue
+            _, r_msg = await messenger.send_content(content=content, sender=sender, receiver=receiver)
+            if r_msg is not None:
+                success += 1
+        self.info('user (%s) info has been broadcast to %d group members', user, success)
+        return success > 0
+
     async def process_new_user(self, identifier: ID) -> bool:
         now = DateTime.now()
         when = self.__new_users.get(identifier)
@@ -140,7 +178,11 @@ class Freshman(Logging):
             return False
         if await self._check_user(user=identifier, group=group):
             self.info('invite %s into group: %s', identifier, group)
+            # 0. update time
             self.__new_users[identifier] = now
+            # 1. send user info to all members
+            self._broadcast_user(user=identifier, group=group)
+            # 2. send 'invite' command to all members
             man = SharedGroupManager()
             return await man.invite_group_members(members=[identifier], group=group)
 
