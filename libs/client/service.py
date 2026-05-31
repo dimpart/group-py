@@ -134,11 +134,11 @@ class BaseService(Runner, Service, Logging, ABC):
             await fp.touch(identifier=identifier, when=when)
             self.info('invite member? %s, %s', vanished, identifier)
             if vanished:
-                await self._process_new_user(identifier=identifier)
+                await self._process_new_user(user=identifier)
         return True
 
     @abstractmethod
-    async def _process_new_user(self, identifier: ID):
+    async def _process_new_user(self, user: ID):
         raise NotImplementedError(
             f'Not implemented: {type(self).__module__}.{type(self).__name__}._process_new_user()'
         )

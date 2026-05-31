@@ -78,9 +78,9 @@ class GroupService(BaseService):
         self.info('received file from %s: %s', request.sender, content)
 
     # Override
-    async def _process_new_user(self, identifier: ID):
+    async def _process_new_user(self, user: ID):
         distributor = GroupMessageDistributor()
-        distributor.wakeup_user(identifier=identifier)
+        distributor.wakeup_user(identifier=user)
 
 
 class AssistantContentProcessorCreator(ClientContentProcessorCreator):

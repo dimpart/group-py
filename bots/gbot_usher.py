@@ -32,7 +32,7 @@
 """
 
 import sys
-from typing import Optional, Dict
+from typing import Optional, List, Dict
 
 from dimples import DateTime, Converter
 from dimples import EntityType, ID
@@ -41,6 +41,7 @@ from dimples import DocumentUtils
 from dimples import TextContent, FileContent
 from dimples import CustomizedContent
 from dimples import DocumentCommand
+from dimples import Command, GroupCommand
 
 from dimples.utils import SysArgvParser
 from dimples.utils import init_logger
@@ -56,8 +57,8 @@ Path.add(path=path)
 from libs.utils import get_supervisors, md_supervisors
 from libs.utils import md_user_url
 
+from libs.client import ClientFacebook, ClientMessenger
 from libs.client import ClientProcessor
-from libs.client import SharedGroupManager
 from libs.client import Footprint
 from libs.client import Service, Request, BaseService
 
@@ -103,8 +104,7 @@ class Freshman(Logging):
         shared = GlobalVariable()
         return shared.messenger
 
-    async def _check_user(self, user: ID, group: ID) -> bool:
-        facebook = self.facebook
+    async def _check_user(self, user: ID, group: ID, facebook: ClientFacebook) -> bool:
         # check user type
         if user.type != EntityType.USER:
             self.error('user error: %s', user)
@@ -134,57 +134,83 @@ class Freshman(Logging):
         # OK
         return True
 
-    async def _broadcast_user(self, user: ID, group: ID) -> bool:
+    async def process_new_user(self, user: ID) -> bool:
         facebook = self.facebook
         messenger = self.messenger
         if facebook is None or messenger is None:
             self.error('twins not ready: %s, %s', facebook, messenger)
             return False
-        current = await facebook.current_user
-        if current is None:
-            self.error('current user not ready')
-            return False
-        meta = await facebook.get_meta(identifier=user)
-        docs = await facebook.get_documents(identifier=user)
-        members = await facebook.get_members(identifier=group)
-        if meta is None or docs is None or len(docs) == 0:
-            self.error('user not ready: %s, cannot broadcast to group members: %s', user, group)
-            return False
-        elif members is None or len(members) == 0:
-            self.error('group not ready: %s', group)
-            return False
-        sender = current.identifier
-        success = 0
-        content = DocumentCommand.response(documents=docs, meta=meta, identifier=user)
-        for receiver in members:
-            if sender == receiver or receiver == user:
-                self.warning('skip this receiver: %s, new user: %s, the bot: %s', receiver, user, sender)
-                continue
-            _, r_msg = await messenger.send_content(content=content, sender=sender, receiver=receiver)
-            if r_msg is not None:
-                success += 1
-        self.info('user (%s) info has been broadcast to %d group members', user, success)
-        return success > 0
-
-    async def process_new_user(self, identifier: ID) -> bool:
         now = DateTime.now()
-        when = self.__new_users.get(identifier)
+        when = self.__new_users.get(user)
         if when is not None:
-            self.__new_users[identifier] = now
-        # check current group
+            # update time for old user
+            self.__new_users[user] = now
+        #
+        #   check current group
+        #
         group = self.current_group
         if group is None:
             self.warning('group ID not set')
             return False
-        if await self._check_user(user=identifier, group=group):
-            self.info('invite %s into group: %s', identifier, group)
-            # 0. update time
-            self.__new_users[identifier] = now
-            # 1. send user info to all members
-            self._broadcast_user(user=identifier, group=group)
-            # 2. send 'invite' command to all members
-            man = SharedGroupManager()
-            return await man.invite_group_members(members=[identifier], group=group)
+        members = await facebook.get_members(identifier=group)
+        if members is None or len(members) == 0:
+            self.error('group not ready: %s', group)
+            return False
+        #
+        #   check new user
+        #
+        can_invite = await self._check_user(user=user, group=group, facebook=facebook)
+        if can_invite:
+            self.info('invite %s into group: %s', user, group)
+        else:
+            return False
+        #
+        #   do invite
+        #
+        current = await facebook.current_user
+        if current is None:
+            self.error('current user not ready')
+            return False
+        else:
+            sender = current.identifier
+        self.__new_users[user] = now
+        await self._broadcast_user(user=user, members=members, sender=sender, facebook=facebook, messenger=messenger)
+        return await self._invite_user(user=user, group=group, members=members, sender=sender, messenger=messenger)
+
+    async def _broadcast_user(self, user: ID, members: List[ID], sender: ID,
+                              facebook: ClientFacebook, messenger: ClientMessenger) -> bool:
+        """ send user info to all members """
+        meta = await facebook.get_meta(identifier=user)
+        docs = await facebook.get_documents(identifier=user)
+        if meta is None or docs is None or len(docs) == 0:
+            self.error('user not ready: %s, cannot broadcast to group members', user)
+            return False
+        else:
+            self.info('broadcasting user info: %s, meta: %s', user, meta)
+            self.info('broadcasting user info: %s, docs: %s', user, docs)
+        content = DocumentCommand.response(documents=docs, meta=meta, identifier=user)
+        return await self.__to_members(content=content, members=members, user=user, sender=sender, messenger=messenger)
+
+    async def _invite_user(self, user: ID, group: ID, members: List[ID], sender: ID,
+                           messenger: ClientMessenger) -> bool:
+        """ send 'invite' command to all members """
+        content = GroupCommand.invite(group=group, members=members)
+        return await self.__to_members(content=content, members=members, user=user, sender=sender, messenger=messenger)
+
+    async def __to_members(self, content: Command, members: List[ID], user: ID, sender: ID,
+                           messenger: ClientMessenger) -> bool:
+        success = 0
+        self.warning('sending "%s" command: %s, to members: %s', content.cmd, content, members)
+        for receiver in members:
+            if sender == receiver or receiver == user:
+                self.warning('skip this receiver: %s, new user: %s, the bot: %s', receiver, user, sender)
+                continue
+            self.info('sending command "%s" (%s) to %s', content.cmd, user, receiver)
+            _, r_msg = await messenger.send_content(content=content, sender=sender, receiver=receiver)
+            if r_msg is not None:
+                success += 1
+        self.info('command "%s" (%s) has been send to %d group members', content.cmd, user, success)
+        return success > 0
 
 
 g_vars = Freshman()
@@ -437,11 +463,11 @@ class GroupUsher(BaseService):
             await super()._process_customized_content(content=content, request=request)
 
     # Override
-    async def _process_new_user(self, identifier: ID):
+    async def _process_new_user(self, user: ID):
         try:
-            await g_vars.process_new_user(identifier=identifier)
+            await g_vars.process_new_user(user=user)
         except Exception as error:
-            self.error('failed to process new user: %s, error: %s', identifier, error)
+            self.error('failed to process new user: %s, error: %s', user, error)
 
 
 class BotMessageProcessor(ClientProcessor):
