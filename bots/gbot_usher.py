@@ -194,7 +194,7 @@ class Freshman(Logging):
     async def _invite_user(self, user: ID, group: ID, members: List[ID], sender: ID,
                            messenger: ClientMessenger) -> bool:
         """ send 'invite' command to all members """
-        content = GroupCommand.invite(group=group, members=members)
+        content = GroupCommand.invite(group=group, members=[user])
         return await self.__to_members(content=content, members=members, user=user, sender=sender, messenger=messenger)
 
     async def __to_members(self, content: Command, members: List[ID], user: ID, sender: ID,
@@ -504,7 +504,8 @@ async def async_main():
     #  init logger
     #
     show_location = sys_argv.has_opt(opt='log-location')
-    init_logger(name=BOT_NAME, level=LOG_LEVEL, show_location=show_location)
+    log_directory = sys_argv.get_opt(opt='log-dir')
+    init_logger(name=BOT_NAME, level=LOG_LEVEL, show_location=show_location, directory=log_directory)
     #
     #  create config
     #

@@ -48,10 +48,10 @@ fi
 #
 
 title "DIM Group Bot"
-${launch} group "bots/gbot_assistant.py"
+${launch} "assistant" "bots/gbot_assistant.py"
 
 title "DIM Receptionist"
-${launch} usher "bots/gbot_usher.py"
+${launch} "usher" "bots/gbot_usher.py"
 
 echo ""
 echo "    >>> Done <<<"
