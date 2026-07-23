@@ -28,6 +28,7 @@ from typing import Any, List, Dict
 
 from dimples import DateTime
 from dimples import ID
+from dimples import User
 
 
 class ActiveUser:
@@ -58,6 +59,13 @@ class ActiveUser:
     def recently_active(self, now: DateTime) -> bool:
         return now < (self.__time + self.MONTHLY)
 
+    def is_same_as(self, other: Any) -> bool:
+        if isinstance(other, ActiveUser):
+            other = other.identifier
+        elif isinstance(other, User):
+            other = other.identifier
+        return self.__identifier.is_same_as(other=other)
+
     #
     #   Factories
     #
@@ -78,6 +86,8 @@ class ActiveUser:
         if identifier is None or when is None:
             # assert False, f'active user error: {user}'
             return None
+        elif identifier.terminal is not None:
+            identifier = identifier.without_terminal()
         return ActiveUser(identifier=identifier, when=when)
 
     @classmethod

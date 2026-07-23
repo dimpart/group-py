@@ -105,7 +105,7 @@ class Footprint(Logging):
     async def _last_time(self, identifier: ID, now: DateTime) -> Optional[DateTime]:
         users = await self.active_users(now=now)
         for item in users:
-            if item.identifier == identifier:
+            if item.is_same_as(other=identifier):
                 return item.time
 
     # private
@@ -133,13 +133,15 @@ class Footprint(Logging):
         users = await self.active_users(now=now)
         found = False
         for item in users:
-            if item.identifier == identifier:
+            if item.is_same_as(other=identifier):
                 # found, update time and sort
                 if not item.touch(when=when):
                     self.info(msg='active user not touch: %s' % item)
                 found = True
         if not found:
             # insert new user
+            if identifier.terminal is not None:
+                identifier = identifier.without_terminal()
             usr = ActiveUser(identifier=identifier, when=when)
             users.insert(0, usr)
         return await self._save_users(users=users, now=now)

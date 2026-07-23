@@ -314,7 +314,7 @@ class GroupUsher(BaseService):
             if uid.type != EntityType.USER:
                 self.info('ignore user: %s', uid)
                 continue
-            elif uid == sender:
+            elif uid.is_same_as(other=sender):
                 self.info('skip the sender: %s', uid)
                 continue
             # get user info
