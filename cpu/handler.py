@@ -24,8 +24,9 @@
 # ==============================================================================
 
 import threading
-from typing import Optional, List, Dict
+from typing import Optional, List
 
+from dimples import StringPairing
 from dimples import ID, ReliableMessage
 from dimples import Content
 from dimples import CommonFacebook, CommonMessenger
@@ -79,7 +80,7 @@ class GroupMessageHandler(Runner, Logging):
         i_msg, r_msg = await messenger.send_content(sender=None, receiver=receiver, content=content, priority=priority)
         return r_msg is not None
 
-    async def _fetch_group_keys(self, group: ID, sender: ID, keys: Dict[str, str]) -> Optional[Dict[str, str]]:
+    async def _fetch_group_keys(self, group: ID, sender: ID, keys: StringPairing) -> Optional[StringPairing]:
         db = self.database
         if keys is not None and len(keys) > 0:
             await db.save_group_keys(group=group, sender=sender, keys=keys)

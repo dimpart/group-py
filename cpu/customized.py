@@ -23,8 +23,9 @@
 # SOFTWARE.
 # ==============================================================================
 
-from typing import Optional, List, Dict
+from typing import Optional, List
 
+from dimples import StringPairing
 from dimples import ID
 from dimples import ReliableMessage
 from dimples import Content
@@ -52,7 +53,7 @@ class GroupKeyManager:
     def database(self, db: Database):
         self.__db = db
 
-    async def save_group_keys(self, group: ID, sender: ID, keys: Dict[str, str]) -> bool:
+    async def save_group_keys(self, group: ID, sender: ID, keys: StringPairing) -> bool:
         db = self.database
         assert db is not None, 'database not set yet'
         #
@@ -60,6 +61,7 @@ class GroupKeyManager:
         #
         old_keys = await db.get_group_keys(group=group, sender=sender)
         if old_keys is not None:
+            assert isinstance(old_keys, dict), f'group keys error: {old_keys}, {sender} -> {group}'
             digest = old_keys.get('digest')
             if digest is not None and digest == keys.get('digest'):
                 #
@@ -82,7 +84,7 @@ class GroupKeyManager:
         #
         return await db.save_group_keys(group=group, sender=sender, keys=keys)
 
-    async def load_group_keys(self, group: ID, sender: ID) -> Optional[Dict[str, str]]:
+    async def load_group_keys(self, group: ID, sender: ID) -> Optional[StringPairing]:
         db = self.database
         assert db is not None, 'database not set yet'
         return await db.get_group_keys(group=group, sender=sender)
@@ -91,7 +93,7 @@ class GroupKeyManager:
         keys = await self.load_group_keys(group=group, sender=sender)
         if keys is None:
             return None
-        assert isinstance(keys, Dict), 'group keys error: %s' % keys
+        assert isinstance(keys, dict), 'group keys error: %s' % keys
         return keys.get(str(member))
 
 
@@ -133,7 +135,7 @@ class GroupKeyHandler(BaseCustomizedContentHandler):
         """ Process 'update' command from group message sender """
         db = GroupKeyManager()
         keys = content.get('keys')
-        if not isinstance(keys, Dict):
+        if not isinstance(keys, dict):
             text = 'Group keys error, failed to update.'
         elif await db.save_group_keys(group=group, sender=sender, keys=keys):
             text = 'Group keys updated.'
@@ -156,7 +158,7 @@ class GroupKeyHandler(BaseCustomizedContentHandler):
         if keys is None:
             keys = {}
         else:
-            assert isinstance(keys, Dict), 'group keys error: %s' % keys
+            assert isinstance(keys, dict), 'group keys error: %s' % keys
         # check group key
         encrypted_keys = keys.get(str(member))
         if encrypted_keys is None:

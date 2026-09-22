@@ -29,9 +29,9 @@ from typing import List, Optional
 from dimples import ID
 from dimples import ReliableMessage
 from dimples import ReliableMessageDBI
-from dimples.utils import CachePool
-from dimples.utils import Config
-from dimples.database import DbTask, DataCache
+from dimples import CachePool
+from dimples import Config
+from dimples import DbTask, DataCache
 
 from .redis import GroupInboxMessageCache
 
@@ -57,7 +57,7 @@ class MsgTask(DbTask[ID, List[ReliableMessage]]):
 
     # Override
     async def _read_data(self) -> Optional[List[ReliableMessage]]:
-        return await self._redis.get_reliable_messages(receiver=self._receiver, limit=self._limit)
+        return await self._redis.load_reliable_messages(receiver=self._receiver, limit=self._limit)
 
     # Override
     async def _write_data(self, value: List[ReliableMessage]) -> bool:

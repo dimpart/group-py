@@ -29,10 +29,10 @@
 
 """
 
-from dimples.common.compat import LibraryLoader
-from dimples.common import CommonArchivist as ClientArchivist
-from dimples.group import SharedGroupManager
+from dimples import SharedGroupManager
 
+from dimples.common.compat import LibraryLoader
+from dimples.client import ClientArchivist
 from dimples.client.cpu import ClientContentProcessorCreator
 from dimples.client import ClientSession, SessionState
 from dimples.client import ClientFacebook
