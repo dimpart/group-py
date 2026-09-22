@@ -177,7 +177,7 @@ class GroupMessageHandler(Runner, Logging):
             else:
                 self.info(msg='split group message: %s => %s (%s)' % (sender, member, group))
             # forward message
-            info = msg.copy_dict()
+            info = msg.copy_map()
             info.pop('keys', None)
             info['key'] = enc_key
             info['receiver'] = target

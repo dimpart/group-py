@@ -44,6 +44,7 @@ from dimples import DocumentCommand
 from dimples import Command, GroupCommand
 
 from dimples.utils import SysArgvParser
+from dimples.utils import get_exception_traceback
 from dimples.utils import init_logger
 from dimples.utils import Log, LogLevel, Logging
 from dimples.utils import Runner, Config
@@ -467,7 +468,8 @@ class GroupUsher(BaseService):
         try:
             await g_vars.process_new_user(user=user)
         except Exception as error:
-            self.error('failed to process new user: %s, error: %s', user, error)
+            tr = get_exception_traceback()
+            self.error('failed to process new user: %s, error: %s, %s', user, error, tr)
 
 
 class BotMessageProcessor(ClientProcessor):
